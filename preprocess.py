@@ -36,6 +36,7 @@ def visualizeSpectro(data, rate, title):
     plt.subplot(2,1,2)
     plt.plot(x, y)
     plt.ylim([0,y_max])
+    plt.xlim([0,rate/2])
     plt.grid()
     plt.xlabel("Frequency [Hz]")
     plt.tight_layout()
