@@ -121,8 +121,8 @@ def harmonic_mean(a, b):
 #%% Import signals
 
 # Declare files path
-PCG_path = r"../DatasetCHVNGE/4_MV.mp3"
-ECG_path = r"../DatasetCHVNGE/4_MV.raw"
+PCG_path = r"../DatasetCHVNGE/7_TV.mp3"
+ECG_path = r"../DatasetCHVNGE/7_TV.raw"
 
 ## Import PCG
 a = pydub.AudioSegment.from_mp3(PCG_path)
@@ -139,6 +139,8 @@ ECG_bit_width = 12
 ### Visualize
 # visualizeSpectro(ECG, ECG_rate)
 # visualizeSpectro(PCG, PCG_rate)
+
+visualizeStacked(ECG[:3000], PCG[:48000])
 
 #%% Preprocess common
 ## minmax normalization
@@ -240,8 +242,8 @@ PCG_peaks = PCG_peaks[::10]
 # visualizeStacked(PCG_n, PCG_peaks)
 
 #%% Combine/Compare R-peaks with S1-S2 peaks
-visualizeStacked(ECG_n, PCG_n)
-visualizeStacked(ECG_peaks, PCG_peaks)
+# visualizeStacked(ECG_n, PCG_n)
+# visualizeStacked(ECG_peaks, PCG_peaks)
 
 correlation_coeff = np.corrcoef(ECG_peaks, PCG_peaks)[0][1]
 
