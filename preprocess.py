@@ -46,25 +46,75 @@ def softThreshold (signal, dev):
     lbda = dev * np.sqrt(2 * np.log(len(signal))) # Universal threshold calculator
     return np.sign(signal) * np.maximum(np.abs(signal) - lbda, 0)
 
-def waveletDenoise(signal,family, level):
+def universal(coeffs, sigma):
+    n = len(coeffs)
+    return sigma * np.sqrt(2*np.log(n))
+
+def normalshrink_lambda(coeffs, sigma):  
+    # Number of wavelet coefficients
+    n = len(coeffs)
+    beta = np.sqrt(np.log10(n/9))
+    sigma_y = np.var(coeffs)
+
+    lambda_normal = beta * (sigma ** 2) / sigma_y
+    
+    return lambda_normal
+
+def residuals (filtered, raw):
+    return  raw - filtered[:len(raw)]
+
+def ecgWVDenoise(signal, family, level, threshold):
     wv_coeffs = pywt.wavedec(signal, wavelet=family, level=level)
-    dev = np.median(abs(wv_coeffs[-2]))/0.674 # Estimate noise level MAD
-    for i in range(len(wv_coeffs)):
-        wv_coeffs[i] = softThreshold (wv_coeffs[i], dev)
+    sigma = np.median(abs(wv_coeffs[-2]))/0.674
+    for i in range(len(wv_coeffs)-1):
+        lbda = threshold(wv_coeffs[i+1], sigma)
+        wv_coeffs[i+1] = softThreshold (wv_coeffs[i+1], lbda)
+    wv_coeffs[0][:] = 0
     return pywt.waverec(wv_coeffs, wavelet=family)
 
-def waveletDenoise2(signal,family, level):
-    wv_coeffs = pywt.wavedec(signal, wavelet=family, level=level)
-    lbda = np.sqrt(2*np.log(len(signal)))
-    wv_coeffs[1:] = [pywt.threshold(c, lbda, mode='soft') for c in wv_coeffs[1:]]
-    return pywt.waverec(wv_coeffs, wavelet=family)
+def pcgWVDenoise(signal, threshold):
+    wv_coeffs = pywt.wavedec(signal, wavelet='coif4', level=6)
+    sigma = np.median(abs(wv_coeffs[1]))/0.674
+    for i in range(len(wv_coeffs)):
+        lbda = threshold(wv_coeffs[i], sigma)
+        wv_coeffs[i] = softThreshold (wv_coeffs[i], lbda)
+    wv_coeffs[0] -= np.mean(wv_coeffs[0])
+    wv_coeffs[-1][:] = 0
+    wv_coeffs[-2][:] = 0
+    wv_coeffs[-3][:] = 0
+    return pywt.waverec(wv_coeffs, wavelet='coif4')
 
 def playSound(signal, fr, t):
     sd.play(signal,fr)
     time.sleep(t)
     sd.stop()
 
+def totalPNID(noise, raw):
+    noise_power = signalPower(noise)
+    raw_power = signalPower(raw)
+    return 10 * np.log10(noise_power / raw_power)
 
+def meanSquareError(filtered, raw):
+    filtered = np.array(filtered)
+    raw = np.array(raw)
+    return np.mean((raw - filtered[:len(raw)]) ** 2)
+
+def signalPower(signal):
+    return np.mean(signal **2)
+
+def bandPassButterworth(data, a, b, rate, decimate=1):
+    coefficients = signal.butter(8, [a, b], btype="bandpass", output="sos", fs=rate)
+    filt = signal.sosfiltfilt(coefficients, data)
+    return filt[::decimate]
+
+def shannonEnergy(signal):
+    epsilon = 1e-10  # Small constant to prevent log(0)
+    energy = -signal**2 * np.log(signal**2 + epsilon)
+    return energy
+
+def smooth_signal(signal, window_len=50):
+    hamming_window = np.hamming(window_len)
+    return np.convolve(signal, hamming_window, mode='same')
 #%% Import signals
 
 # Declare files path
@@ -77,59 +127,117 @@ PCG_rate = a.frame_rate
 t = a.duration_seconds
 PCG = np.array(a.get_array_of_samples())
 PCG_bit_width = 16
+PCG_resolution = (2 ** PCG_bit_width)-1
 
 ## Import ECG
 ECG = np.loadtxt(ECG_path, delimiter=",", dtype=int)
 ECG_rate = 500
 ECG_bit_width = 12
+ECG_resolution = (2 ** ECG_bit_width)-1
 #%% ECG Processing
 
 ## Normalize full-scale
-ECG_v = (ECG - 2047) /4095 #int 12 bits (scale -0.5;0.5)
-visualizeSpectro(ECG_v, ECG_rate, 'ECG normalized full-scale')
+ECG_v = (ECG - ECG_resolution/2) / (ECG_resolution) #int 12 bits (scale -0.5;0.5)
 
-## Wavelet after FIR
+## Wavelet denoising
+ECG_wv_denoised = ecgWVDenoise(ECG_v, 'db4', 8, universal)
+e_ECG = residuals(ECG_wv_denoised, ECG_v)
+
+## Calculate ECG Noise Metrics
+mse_ECG =  meanSquareError(ECG_wv_denoised, ECG_v)
+pnid_ECG = totalPNID(e_ECG, ECG_v)
+
+print("MSE ECG: ", mse_ECG, "\nNoise Distortion: ", pnid_ECG)
+#%% ECG Segmentation
+## detect R-peaks
+rPeaks = ecg.hamilton_segmenter(ECG_wv_denoised, ECG_rate)
+# create zero vector
+ECG_peaks = np.zeros_like(ECG_wv_denoised)
+
+for idx in rPeaks[0]:
+    ECG_peaks[idx] = 1
 
 
-## Linear phase FIR
-# Calculate FIR coefficients with window method
-# Define the filter specifications
-numtaps = 251                  # Number of taps in the filter
-cutoff = [0.004, 0.6]          # Passband frequencies (normalized, from 0 to 1, where 1 is the Nyquist frequency)
-window = 'hamming'             # Window type
-
-taps = signal.firwin(numtaps, cutoff, pass_zero=False, window=window)
-
-#ECG_filt = np.convolve(ECG_v, taps, mode='full')[250:-250] # Trim convolution overhead
-ECG_filt = np.convolve(ECG_v, taps, mode='same')
-visualizeSpectro(ECG_filt, ECG_rate, 'ECG FIR filtered')
+#100 ms square
+s = np.ones(50)
 
 
+# convolve with pulses to create a "probability zone"
+ECG_peaks = np.convolve(ECG_peaks, s, mode='same')
 
-ECG_filt_db4 = waveletDenoise(ECG_filt,'db4', 5)
-visualizeSpectro(ECG_filt_db4, ECG_rate, 'ECG db4 after FIR')
 
-# err1 = ECG_v - ECG_filt_db4[:np.size(ECG_v)]
+# Decimate ECG and peaks @50sps
+ECG_wv_denoised_d = ECG_wv_denoised[::10]
+ECG_peaks_d = ECG_peaks[::10]
+
+# Compute BPM
+bpm = 60 * len(rPeaks[0])/t
+
+ECG_flag = True if (bpm >= 40 or bpm <= 130) else False
+print("BPM: ", bpm, "\nAcceptable rate: ", ECG_flag)
+#%% Plots ECG
+
+# #Plot Denoising
+# fig, axs = plt.subplots(3,1, gridspec_kw={'height_ratios': [2, 2, 1]})
+# fig.suptitle('ECG Filtering Process')
+# axs[0].plot(ECG_v)
+# axs[0].set_title('Raw ECG')
+# axs[0].grid()
+# axs[1].plot(ECG_wv_denoised)
+# axs[1].set_title('Denoised ECG')
+# axs[1].grid()
+# axs[2].plot(e_ECG)
+# axs[2].set_title('Estimated Noise')
+# axs[2].grid()
+# fig.supxlabel('Samples [500sps]')
+# fig.supylabel('Amplitude [normalized]')
+
+# #Plot Segmentation
 # plt.figure()
-# plt.plot(err1)
+# plt.plot(ECG_wv_denoised_d)
+# plt.plot(ECG_peaks_d)
+# plt.grid()
+# plt.title('Segmented ECG')
+# plt.xlabel('Samples [50sps]')
+# plt.tight_layout()
+# plt.show()
+
+#%% PCG Processing
+
+## Normalize full-scale
+PCG_v = (PCG ) / (PCG_resolution) #uint 16 bits (scale -0.5;0.5)
+# Signal Denoise
+PCG_wv_denoised = pcgWVDenoise(PCG_v, normalshrink_lambda)
+e_PCG = residuals (PCG_wv_denoised, PCG_v)
+
+## Calculate PCG Noise Metrics
+mse_PCG =  meanSquareError(PCG_wv_denoised, PCG_v)
+pnid_PCG = totalPNID(e_PCG, PCG_v)
+
+print("MSE PCG: ", mse_PCG, "\nNoise Distortion: ", pnid_PCG)
+
+#%% PCG Shannon Peaks **Busted NOT WORKING**
+
+# ## Filtering
+# PCG_f = bandPassButterworth(PCG_v, 20, 400, PCG_rate, decimate=10)
+# PCG_rate /= 10
+
+
+
+# ## 2nd order Shannon energy envelope
+# shannonEnergy = shannonEnergy(PCG_f)
+# ## Smooth the shannon Energy
+# smoothedSE = smooth_signal(shannonEnergy)
+
+
+# plt.figure()
+# plt.plot(PCG_f[::16])
+# plt.plot(shannonEnergy[::16])
+# plt.plot(smoothedSE[::16])
+# plt.plot(ECG_peaks_d)
 # plt.grid()
 
+#%%
 
-# err = ECG_v - ECG_filt
-# plt.figure()
-# plt.plot(err)
-# plt.grid()
 
-## FIR after wavelet
-ECG_db4 = waveletDenoise(ECG_v,'db4', 5)
-visualizeSpectro(ECG_db4, ECG_rate, 'ECG only db4')
-
-#ECG_db4_filt = np.convolve(ECG_db4, taps, mode='full')[250:-250] # Trim convolution overhead
-ECG_db4_filt = np.convolve(ECG_db4, taps, mode='same')
-visualizeSpectro(ECG_db4_filt, ECG_rate, 'ECG FIR after db4')
-
-# err2 = ECG_v - ECG_db4_filt[:np.size(ECG_v)]
-# plt.figure()
-# plt.plot(err2)
-# plt.grid()
 
