@@ -42,6 +42,17 @@ def visualizeSpectro(data, rate, title):
     plt.tight_layout()
     plt.show()
     
+def visualizeStacked(x1, x2):
+    plt.figure()
+    plt.subplot(2,1,1)
+    plt.plot(x1)
+    plt.grid()
+    plt.subplot(2,1,2)
+    plt.plot(x2)
+    plt.grid()
+    plt.tight_layout()
+    plt.show
+    
 def softThreshold (signal, dev):
     lbda = dev * np.sqrt(2 * np.log(len(signal))) # Universal threshold calculator
     return np.sign(signal) * np.maximum(np.abs(signal) - lbda, 0)
@@ -73,7 +84,7 @@ def ecgWVDenoise(signal, family, level, threshold):
     return pywt.waverec(wv_coeffs, wavelet=family)
 
 def pcgWVDenoise(signal, threshold):
-    wv_coeffs = pywt.wavedec(signal, wavelet='coif4', level=6)
+    wv_coeffs = pywt.wavedec(signal, wavelet='coif4', level=5)
     sigma = np.median(abs(wv_coeffs[1]))/0.674
     for i in range(len(wv_coeffs)):
         lbda = threshold(wv_coeffs[i], sigma)
@@ -118,8 +129,8 @@ def smooth_signal(signal, window_len=50):
 #%% Import signals
 
 # Declare files path
-PCG_path = r"../DatasetCHVNGE/16_TV.mp3"
-ECG_path = r"../DatasetCHVNGE/16_TV.raw"
+PCG_path = r"../DatasetCHVNGE/7_PV.mp3"
+ECG_path = r"../DatasetCHVNGE/7_PV.raw"
 
 ## Import PCG
 a = pydub.AudioSegment.from_mp3(PCG_path)
@@ -238,6 +249,7 @@ print("MSE PCG: ", mse_PCG, "\nNoise Distortion: ", pnid_PCG)
 # plt.grid()
 
 #%%
-
-
+visualizeStacked(ECG, PCG)
+#visualizeStacked(ECG_wv_denoised[1000:6000], PCG_wv_denoised[16000:96000])
+#visualizeStacked(PCG_v, PCG_wv_denoised)
 
