@@ -7,7 +7,6 @@ import glob
 import pydub
 import re
 import pywt
-from scipy import signal
 
 #%% Functions
 def merge_rows(group):
@@ -75,6 +74,9 @@ def meanSquareError(filtered, raw):
 
 def signalPower(signal):
     return np.mean(signal **2)
+
+def SNR(signal, noise):
+    return 10*np.log10(signalPower(signal)/signalPower(noise))
 
 
 def denoiseECG(ECG):
@@ -153,4 +155,68 @@ df_merged['PCG_Denoised'] = df_merged['PCG'].apply(denoisePCG)
 df_merged['Residuals_ECG'] = df_merged.apply(lambda x: residuals(x['ECG_Denoised'], x['ECG']), axis=1)
 df_merged['Residuals_PCG'] = df_merged.apply(lambda x: residuals(x['PCG_Denoised'], x['PCG']), axis=1)
 
-print(df_merged.head())
+# MSE
+df_merged['MSE_ECG'] = df_merged['Residuals_ECG'].apply(signalPower)
+df_merged['MSE_PCG'] = df_merged['Residuals_PCG'].apply(signalPower)
+
+# ECG SNR
+df_merged['SNR_ECG'] = df_merged.apply(lambda x: totalPNID(x['Residuals_ECG'], x['ECG']), axis=1)
+
+# PCG SNR
+df_merged['SNR_PCG'] = df_merged.apply(lambda x: SNR(x['PCG_Denoised'], x['Residuals_PCG']), axis=1)
+
+
+#print(df_merged.head())
+
+#%% Import manual annotations
+
+manualQScores = pd.read_excel('DatasetCHVNGE/SignalQuality.xlsx', 
+                              sheet_name='Total')
+
+manualQScores = manualQScores.sort_values(by=['Trial', 'Spot'])
+manualQScores.reset_index(drop=True, inplace=True)
+
+# Eliminate the missing data values
+filteredManualQ = manualQScores[~manualQScores['Trial'].between(71, 77)]
+filteredManualQ.reset_index(drop=True, inplace=True)
+
+#print(manualQScores.head())
+
+
+#%% Plots
+
+# ECG MSE
+plt.figure()
+plt.scatter(filteredManualQ['MINMAX_ECG'], df_merged['MSE_ECG'])
+plt.grid()
+plt.xlabel('Quality')
+plt.ylabel('MSE')
+plt.title('ECG Mean Square Error quality comparison')
+plt.show()
+
+# ECG SNR
+plt.figure()
+plt.scatter(filteredManualQ['MINMAX_ECG'], df_merged['SNR_ECG'])
+plt.grid()
+plt.xlabel('Quality')
+plt.ylabel('Noise Distortion')
+plt.title('ECG Noise distortion quality comparison')
+plt.show()
+
+# PCG MSE
+plt.figure()
+plt.scatter(filteredManualQ['MINMAX_PCG'], df_merged['MSE_PCG'])
+plt.grid()
+plt.xlabel('Quality')
+plt.ylabel('MSE')
+plt.title('PCG Mean Square Error quality comparison')
+plt.show()
+
+# ECG SNR
+plt.figure()
+plt.scatter(filteredManualQ['MINMAX_PCG'], df_merged['SNR_PCG'])
+plt.grid()
+plt.xlabel('Quality')
+plt.ylabel('SNR')
+plt.title('PCG SNR vs Quality')
+plt.show()
