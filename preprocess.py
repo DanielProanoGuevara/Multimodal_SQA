@@ -8,14 +8,12 @@ Created on Thu May 23 16:42:15 2024
 
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy.stats as stats
-import math
 import pywt
 import pydub
 import time
 import sounddevice as sd
 from scipy import signal
-from biosppy.signals import ecg
+from scipy.io.wavfile import write
 
 #%% Functions, objects, classes
 
@@ -52,6 +50,9 @@ def visualizeStacked(x1, x2):
     plt.grid()
     plt.tight_layout()
     plt.show
+    
+def minmaxNorm2(data):
+    return (2*(data - np.min(data))/(np.max(data)-np.min(data)))-1
     
 def softThreshold (signal, dev):
     lbda = dev * np.sqrt(2 * np.log(len(signal))) # Universal threshold calculator
@@ -126,11 +127,21 @@ def shannonEnergy(signal):
 def smooth_signal(signal, window_len=50):
     hamming_window = np.hamming(window_len)
     return np.convolve(signal, hamming_window, mode='same')
+
+def playback(data, rate, t):
+    sd.play(data, rate)
+    time.sleep(t)
+    sd.stop()
+    
+def saveAudio(data, rate, name):
+    sound = minmaxNorm2(data)
+    write(name, rate, sound.astype(np.float32))
+    
 #%% Import signals
 
 # Declare files path
-PCG_path = r"../DatasetCHVNGE/7_PV.mp3"
-ECG_path = r"../DatasetCHVNGE/7_PV.raw"
+PCG_path = r"../DatasetCHVNGE/48_TV.mp3"
+ECG_path = r"../DatasetCHVNGE/48_TV.raw"
 
 ## Import PCG
 a = pydub.AudioSegment.from_mp3(PCG_path)
@@ -159,33 +170,7 @@ mse_ECG =  meanSquareError(ECG_wv_denoised, ECG_v)
 pnid_ECG = totalPNID(e_ECG, ECG_v)
 
 print("MSE ECG: ", mse_ECG, "\nNoise Distortion: ", pnid_ECG)
-#%% ECG Segmentation
-## detect R-peaks
-rPeaks = ecg.hamilton_segmenter(ECG_wv_denoised, ECG_rate)
-# create zero vector
-ECG_peaks = np.zeros_like(ECG_wv_denoised)
 
-for idx in rPeaks[0]:
-    ECG_peaks[idx] = 1
-
-
-#100 ms square
-s = np.ones(50)
-
-
-# convolve with pulses to create a "probability zone"
-ECG_peaks = np.convolve(ECG_peaks, s, mode='same')
-
-
-# Decimate ECG and peaks @50sps
-ECG_wv_denoised_d = ECG_wv_denoised[::10]
-ECG_peaks_d = ECG_peaks[::10]
-
-# Compute BPM
-bpm = 60 * len(rPeaks[0])/t
-
-ECG_flag = True if (bpm >= 40 or bpm <= 130) else False
-print("BPM: ", bpm, "\nAcceptable rate: ", ECG_flag)
 #%% Plots ECG
 
 # #Plot Denoising
@@ -227,29 +212,13 @@ pnid_PCG = totalPNID(e_PCG, PCG_v)
 
 print("MSE PCG: ", mse_PCG, "\nNoise Distortion: ", pnid_PCG)
 
-#%% PCG Shannon Peaks **Busted NOT WORKING**
-
-# ## Filtering
-# PCG_f = bandPassButterworth(PCG_v, 20, 400, PCG_rate, decimate=10)
-# PCG_rate /= 10
-
-
-
-# ## 2nd order Shannon energy envelope
-# shannonEnergy = shannonEnergy(PCG_f)
-# ## Smooth the shannon Energy
-# smoothedSE = smooth_signal(shannonEnergy)
-
-
-# plt.figure()
-# plt.plot(PCG_f[::16])
-# plt.plot(shannonEnergy[::16])
-# plt.plot(smoothedSE[::16])
-# plt.plot(ECG_peaks_d)
-# plt.grid()
 
 #%%
 visualizeStacked(ECG, PCG)
 #visualizeStacked(ECG_wv_denoised[1000:6000], PCG_wv_denoised[16000:96000])
-#visualizeStacked(PCG_v, PCG_wv_denoised)
+visualizeStacked(PCG_v, PCG_wv_denoised)
+visualizeStacked(ECG_v, ECG_wv_denoised)
 
+#playback(PCG_wv_denoised, PCG_rate, t)
+
+saveAudio(PCG_wv_denoised, PCG_rate, "48_TV_clean.wav")

@@ -7,6 +7,8 @@ import glob
 import pydub
 import re
 import pywt
+import sounddevice as sd
+import time
 
 #%% Functions
 def merge_rows(group):
@@ -88,6 +90,13 @@ def denoisePCG(PCG):
     ## Wavelet Denoise
     PCG_wv_denoised = pcgWVDenoise(PCG, normalshrink_lambda)
     return PCG_wv_denoised
+
+
+def playback(data, rate, t):
+    sd.play(data, rate)
+    time.sleep(t)
+    sd.stop()
+
 
 
 

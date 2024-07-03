@@ -140,7 +140,7 @@ ECG_bit_width = 12
 # visualizeSpectro(ECG, ECG_rate)
 # visualizeSpectro(PCG, PCG_rate)
 
-visualizeStacked(ECG[:3000], PCG[:48000])
+visualizeStacked(ECG, PCG)
 
 #%% Preprocess common
 ## minmax normalization
