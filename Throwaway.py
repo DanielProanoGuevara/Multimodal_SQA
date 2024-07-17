@@ -15,9 +15,11 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 import pywt
 
+from preprocessing_lib import schmidt_spike_removal
 
 # %%
 # Throwaway Functions
+
 
 def load_wav_files(directory):
     # List to store the data from all .wav files
@@ -91,27 +93,34 @@ def ValSUREThresh(X):
     return THR
 
 
+def nmse(x, y):
+    return np.mean((x - y) ** 2) / np.mean(x ** 2)
+
+
 # %%
 # Import and analyze the dataset
 
 # Directory containing the files
-directory = '../Physionet_2016_training/training-a/a0001.wav'
+directory = '../Physionet_2016_training/training-a/a0388.wav'
 
-# Load and combine .wav files
+# Load .wav files
 samplerate, data = wavfile.read(directory)
 
-# Print the shape of the combined array
-print(data.shape)
+depiked_data = schmidt_spike_removal(data, samplerate)
+
+e = nmse(data, depiked_data)
+
+print('error: ' + str(e))
 
 # %%
 # Denoise
 
-wavelet = 'coif4'
+# wavelet = 'coif4'
 
 
-# Plot the original, noisy, and denoised signals
-plt.figure(figsize=(10, 6))
-plt.plot(data, label='Noisy Signal')
-plt.plot(denoised_signal, label='Denoised Signal')
-plt.legend()
-plt.show()
+# # Plot the original, noisy, and denoised signals
+# plt.figure(figsize=(10, 6))
+# plt.plot(data, label='Noisy Signal')
+# plt.plot(denoised_signal, label='Denoised Signal')
+# plt.legend()
+# plt.show()

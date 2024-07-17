@@ -79,19 +79,19 @@ def resolution_normalization(data, resolution, centered_on_zero=True):
 
     Parameters
     ----------
-    data : TYPE: int, float, numpy array
-        DESCRIPTION: Signal array to be normalized.
-    resolution : TYPE: int
-        DESCRIPTION: Bit depth in binary. Comes from the knowledge of the
+    data : numpy.ndarray
+        Signal array to be normalized.
+    resolution : int
+        Bit depth in binary. Comes from the knowledge of the
         sampling resolution of the signal.
-    centered_on_zero : TYPE: Boolean, optional
-        DESCRIPTION: Enables centering the normalized value around zero. The
+    centered_on_zero : Boolean, optional
+        Enables centering the normalized value around zero. The
         default is True.
 
     Returns
     -------
-    normalized_data : TYPE: int, float, numpy array
-        DESCRIPTION: data normalized between 0.5 and 0.5 based on the
+    normalized_data : numpy.ndarray
+        Data normalized between 0.5 and 0.5 based on the
         acquisition resolution.
 
     """
@@ -109,13 +109,13 @@ def z_score_standardization(data):
 
     Parameters
     ----------
-    data : TYPE: numpy.ndarray
-        DESCRIPTION: The input signal to be standardized.
+    data : numpy.ndarray
+        The input signal to be standardized.
 
     Returns
     -------
-    TYPE: numpy.ndarray
-        DESCRIPTION: The signal standardized.
+    numpy.ndarray
+        The signal standardized.
 
     """
     mu = np.mean(data)
@@ -129,23 +129,23 @@ def downsample(input_signal, orig_freq, target_freq):
 
     Parameters
     ----------
-    input_signal : TYPE: numpy.ndarray
-        DESCRIPTION: The input signal to be downsampled.
-    orig_freq : TYPE: int
-        DESCRIPTION: The original sampling frequency of the signal.
-    target_freq : TYPE: int
-        DESCRIPTION: The target sampling frequency after downsampling.
+    input_signal : numpy.ndarray
+        The input signal to be downsampled.
+    orig_freq : int
+        The original sampling frequency of the signal.
+    target_freq : int
+        The target sampling frequency after downsampling.
 
     Raises
     ------
     ValueError
-        DESCRIPTION: The final downsampling frequency cannot be higher than the
+        The final downsampling frequency cannot be higher than the
         original one.
 
     Returns
     -------
-    downsampled_signal : TYPE: numpy.ndarray
-        DESCRIPTION: The downsampled signal.
+    downsampled_signal : numpy.ndarray
+        The downsampled signal.
 
     """
     # Calculate the downsampling ratio
@@ -182,23 +182,23 @@ def butterworth_filter(data, filter_topology, order, fs, fc):
 
     Parameters
     ----------
-    data : TYPE: numpy.ndarray
-        DESCRIPTION: Is the signal to be filtered.
-    filter_topology : TYPE: String
-        DESCRIPTION: The topology of the filter {'lowpass', 'highpass',
-                                                 'bandpass', 'bandstop'}.
-    order : TYPE: int
-        DESCRIPTION: The order of the filter.
-    fs : TYPE: int
-        DESCRIPTION: The sampling frequency in Hz.
+    data : numpy.ndarray
+        Is the signal to be filtered.
+    filter_topology : String
+        The topology of the filter {'lowpass', 'highpass', 'bandpass',
+                                    'bandstop'}.
+    order : int
+        The order of the filter.
+    fs : int
+        The sampling frequency in Hz.
     fc : TYPE: Int, [Int, Int]
-        DESCRIPTION: The cutoff frequency, or frequencies. For bandpass or
-        bandstop, pass the coefficients between brackets [a, b].
+        The cutoff frequency, or frequencies. For bandpass or bandstop, pass
+    the coefficients between brackets [a, b].
 
     Returns
     -------
-    TYPE: numpy.ndarray
-        DESCRIPTION: The filtered signal.
+    numpy.ndarray
+        The filtered signal.
 
     """
     coefficients = signal.butter(order, fc, btype=filter_topology,
@@ -234,35 +234,46 @@ def schmidt_spike_removal(original_signal, fs):
     # MAAs, then remove those spikes
     while np.any(MAAs > np.median(MAAs) * 3):
         # Find the window with the max MAA
+        val = np.max(MAAs)
         window_num = np.argmax(MAAs)
+        if np.size(window_num) > 1:
+            window_num = window_num[0]
 
         # Find the position of the spike within that window
+        val = np.max(np.abs(sampleframes[:, window_num]))
         spike_position = np.argmax(np.abs(sampleframes[:, window_num]))
 
-        # Finding zero crossings (where there may not be actual 0 values, just
-        # a change from positive to negative)
-        zero_crossings = np.abs(np.diff(np.sign(
-            sampleframes[:, window_num]))) > 1
+        # Finding zero crossings (where there may not be actual 0 values, just a change from positive to negative)
+        zero_crossings = np.abs(
+            np.diff(np.sign(sampleframes[:, window_num]))) > 1
+        zero_crossings = np.append(zero_crossings, 0)
 
         # Find the start of the spike, finding the last zero crossing before
         # spike position. If that is empty, take the start of the window
-        if any(zero_crossings[:spike_position]):
-            spike_start = np.max(np.nonzero(
-                zero_crossings[:spike_position])) + 1
-        else:
-            spike_start = 0
+        # Find the last zero crossing before the spike position
+        last_zero_crossing = np.max(
+            np.where(zero_crossings[:spike_position])[0], initial=-1)
 
-        # Find the end of the spike, finding the first zero crossing after
-        # spike position. If that is empty, take the end of the window
-        if any(zero_crossings[spike_position:]):
-            spike_end = np.min(np.nonzero(zero_crossings[spike_position:]))
-            + spike_position
-        else:
-            spike_end = windowsize - 1
+        # Convert to 1-based indexing by adding 1 (if necessary)
+        spike_start = max(1, last_zero_crossing + 1)
+
+        # Find the start of the spike, finding the last zero crossing before
+        # spike position. If that is empty, take the start of the window
+
+        # Assuming zero_crossings is a numpy array
+        zero_crossings[:spike_position] = 0
+
+        # Find the first non-zero element
+        # np.argmax returns the index of the first occurrence of a condition
+        first_nonzero = np.argmax(zero_crossings > 0)
+        if zero_crossings[first_nonzero] == 0:
+            # If no non-zero element is found, handle appropriately
+            first_nonzero = len(zero_crossings)
+
+        spike_end = min(first_nonzero, windowsize)
 
         # Set to zero
         sampleframes[spike_start:spike_end+1, window_num] = 0.0001
-
         # Recalculate MAAs
         MAAs = np.max(np.abs(sampleframes), axis=0)
 
@@ -283,22 +294,21 @@ def wavelet_denoise(data, decomposition_level, wavelet_family,
 
     Parameters
     ----------
-    data : TYPE: numpy.ndarray
-        DESCRIPTION: The data to be processed.
-    decomposition_level : TYPE: int
-        DESCRIPTION: The level of wavelet decompositions.
-    wavelet_family : TYPE: string
-        DESCRIPTION: The wavelet family available in the pywt library.
-    risk_estimator : TYPE: function
-        DESCRIPTION: function that estimates the risk and sets the elimination
-        threshold.
-    shutdown_bands : TYPE: array
-        DESCRIPTION: array of bands to be shut down.
+    data : numpy.ndarray
+        The data to be processed.
+    decomposition_level : int
+        The level of wavelet decompositions.
+    wavelet_family : string
+        The wavelet family available in the pywt library.
+    risk_estimator : function
+        function that estimates the risk and sets the elimination threshold.
+    shutdown_bands : array
+        array of bands to be shut down.
 
     Returns
     -------
-    TYPE: numpy.ndarray
-        DESCRIPTION: The filtered and denoised data.
+    numpy.ndarray
+        The filtered and denoised data.
 
     """
     # Wavelet decomposition
@@ -355,13 +365,13 @@ def universal_threshold(coefficients):
 
     Parameters
     ----------
-    coefficients : TYPE: numpy.ndarray
-        DESCRIPTION: The coefficients to estimate the risk from.
+    coefficients : numpy.ndarray
+        The coefficients to estimate the risk from.
 
     Returns
     -------
-    TYPE: float
-        DESCRIPTION: The value of threshold.
+    float
+        The value of threshold.
 
     """
     n = len(coefficients)
