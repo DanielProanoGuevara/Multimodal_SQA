@@ -234,46 +234,39 @@ def schmidt_spike_removal(original_signal, fs):
     # MAAs, then remove those spikes
     while np.any(MAAs > np.median(MAAs) * 3):
         # Find the window with the max MAA
-        val = np.max(MAAs)
         window_num = np.argmax(MAAs)
-        if np.size(window_num) > 1:
-            window_num = window_num[0]
 
         # Find the position of the spike within that window
-        val = np.max(np.abs(sampleframes[:, window_num]))
         spike_position = np.argmax(np.abs(sampleframes[:, window_num]))
 
-        # Finding zero crossings (where there may not be actual 0 values, just a change from positive to negative)
-        zero_crossings = np.abs(
-            np.diff(np.sign(sampleframes[:, window_num]))) > 1
-        zero_crossings = np.append(zero_crossings, 0)
+        # Finding zero crossings (where there may not be actual 0 values, just
+        # a change from positive to negative)
+        zero_crossings = np.abs(np.diff(np.sign(
+            sampleframes[:, window_num]))) > 1
 
         # Find the start of the spike, finding the last zero crossing before
         # spike position. If that is empty, take the start of the window
-        # Find the last zero crossing before the spike position
-        last_zero_crossing = np.max(
-            np.where(zero_crossings[:spike_position])[0], initial=-1)
+        if any(zero_crossings[:spike_position]):
+            spike_start = np.max(np.nonzero(
+                zero_crossings[:spike_position])) + 1
+        else:
+            spike_start = 0
 
-        # Convert to 1-based indexing by adding 1 (if necessary)
-        spike_start = max(1, last_zero_crossing + 1)
+        # Find the end of the spike, finding the first zero crossing after
+        # spike position. If that is empty, take the end of the window
+        # if any(zero_crossings[spike_position:]):
+        #     spike_end = np.min(np.nonzero(zero_crossings[spike_position:]))
+        #     + spike_position
+        # else:
+        #     spike_end = windowsize - 1
 
-        # Find the start of the spike, finding the last zero crossing before
-        # spike position. If that is empty, take the start of the window
-
-        # Assuming zero_crossings is a numpy array
         zero_crossings[:spike_position] = 0
-
-        # Find the first non-zero element
-        # np.argmax returns the index of the first occurrence of a condition
-        first_nonzero = np.argmax(zero_crossings > 0)
-        if zero_crossings[first_nonzero] == 0:
-            # If no non-zero element is found, handle appropriately
-            first_nonzero = len(zero_crossings)
-
-        spike_end = min(first_nonzero, windowsize)
+        spike_end = min([np.min(np.where(zero_crossings)[0]), windowsize])
 
         # Set to zero
-        sampleframes[spike_start:spike_end+1, window_num] = 0.0001
+        # change to 0.00001 after standardization
+        sampleframes[spike_start:spike_end+1, window_num] = 0
+
         # Recalculate MAAs
         MAAs = np.max(np.abs(sampleframes), axis=0)
 
@@ -281,8 +274,8 @@ def schmidt_spike_removal(original_signal, fs):
     despiked_signal = np.reshape(sampleframes, -1, order='F')
 
     # Add the trailing samples back to the signal
-    despiked_signal = np.concatenate((despiked_signal,
-                                      original_signal[len(despiked_signal):]))
+    despiked_signal = np.concatenate(
+        (despiked_signal, original_signal[len(despiked_signal):]))
 
     return despiked_signal
 

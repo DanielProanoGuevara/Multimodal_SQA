@@ -14,8 +14,7 @@ from scipy.io import wavfile
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import pywt
-
-from preprocessing_lib import schmidt_spike_removal
+import preprocessing_lib as pplib
 
 # %%
 # Throwaway Functions
@@ -94,23 +93,39 @@ def ValSUREThresh(X):
 
 
 def nmse(x, y):
-    return np.mean((x - y) ** 2) / np.mean(x ** 2)
+    return (np.mean((x - y) ** 2) / np.mean(x ** 2))
 
 
 # %%
 # Import and analyze the dataset
 
 # Directory containing the files
-directory = '../Physionet_2016_training/training-a/a0388.wav'
+directory = '../Physionet_2016_training/training-a/a0288.wav'
 
 # Load .wav files
-samplerate, data = wavfile.read(directory)
+samplerate, original_data = wavfile.read(directory)
 
-depiked_data = schmidt_spike_removal(data, samplerate)
+# original_data = pplib.resolution_normalization(original_data, 15)
 
-e = nmse(data, depiked_data)
+data = np.copy(original_data)
 
-print('error: ' + str(e))
+# %%
+# Schmidt despiking
+
+despiked_signal = pplib.schmidt_spike_removal(data, samplerate)
+
+
+# %%
+
+e = nmse(original_data, despiked_signal)
+e_display = "{:e}".format(e)
+
+print('error: ' + e_display)
+
+plt.figure()
+plt.plot(original_data)
+plt.plot(despiked_signal)
+plt.grid()
 
 # %%
 # Denoise
