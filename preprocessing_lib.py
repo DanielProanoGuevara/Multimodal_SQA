@@ -62,10 +62,6 @@ https://academic.oup.com/biomet/article-abstract/81/3/425/256924?redirectedFrom=
 @version: 0.1
 """
 
-# TODO: Homomorphic Envelogram.
-# TODO: Hilbert Envelope.
-# TODO: Wavelet Envelope.
-# TODO: Power Spectral Density Envelope.
 
 import numpy as np
 from scipy.signal import firwin, resample_poly
