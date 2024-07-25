@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 import pywt
 import preprocessing_lib as pplib
+import feature_extraction_lib as ftelib
 
 # %%
 # Throwaway Functions
@@ -106,36 +107,44 @@ directory = '../Physionet_2016_training/training-a/a0288.wav'
 samplerate, original_data = wavfile.read(directory)
 
 # original_data = pplib.resolution_normalization(original_data, 15)
-
-data = np.copy(original_data)
-
-# %%
-# Schmidt despiking
-
-despiked_signal = pplib.schmidt_spike_removal(data, samplerate)
-
-
-# %%
-
-e = nmse(original_data, despiked_signal)
-e_display = "{:e}".format(e)
-
-print('error: ' + e_display)
-
 plt.figure()
-plt.plot(original_data)
-plt.plot(despiked_signal)
+
+# create copy of original data
+data = np.copy(original_data)
+plt.plot(data, label='original')
+
+# standardize data
+z_norm = pplib.z_score_standardization(data)
+plt.plot(z_norm, label='standardized')
 plt.grid()
+plt.legend(loc='lower right')
+plt.show()
+
+# resample 1k Hz
+plt.figure()
+resample = pplib.downsample(z_norm, samplerate, 1000)
+plt.plot(resample, label='resampled 1kHz')
+
+# Schmidt despiking
+despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
+plt.plot(despiked_signal, label='despiked signal')
+
+# wavelet denoising
+wavelet_denoised = pplib.wavelet_denoise(despiked_signal, 5, wavelet_family='coif4',
+                                         risk_estimator=pplib.val_SURE_threshold,
+                                         shutdown_bands=[-1])
+plt.plot(wavelet_denoised, label='wavelet denoised')
+# plt.grid()
+# plt.legend(loc='lower right')
+# plt.show()
+
+# plt.figure()
+# Homomorphic envelope
+homomorphic = ftelib.homomorphic_envelope(wavelet_denoised, 1000, 50)
+plt.plot(homomorphic, label='homomorphic envelope')
+plt.grid()
+plt.legend(loc='lower right')
+plt.show()
+
 
 # %%
-# Denoise
-
-# wavelet = 'coif4'
-
-
-# # Plot the original, noisy, and denoised signals
-# plt.figure(figsize=(10, 6))
-# plt.plot(data, label='Noisy Signal')
-# plt.plot(denoised_signal, label='Denoised Signal')
-# plt.legend()
-# plt.show()

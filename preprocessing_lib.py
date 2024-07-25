@@ -304,12 +304,12 @@ def wavelet_denoise(data, decomposition_level, wavelet_family,
     wv_coeff = pywt.wavedec(data, wavelet=wavelet_family,
                             level=decomposition_level)
     # Band denoising
-    for band_index in range(len(wv_coeff)-1):
+    for band_index in range(len(wv_coeff)):
         # Compute lambda threshold for risk reduction
-        lambda_threshold = risk_estimator(wv_coeff[band_index + 1])
+        lambda_threshold = risk_estimator(wv_coeff[band_index])
         # Threshold the band
-        wv_coeff[band_index + 1] = pywt.threshold(data, value=lambda_threshold,
-                                                  mode='garrote')
+        wv_coeff[band_index] = pywt.threshold(wv_coeff[band_index], value=lambda_threshold,
+                                              mode='garrote')
     # Remove mean in approximation band
     wv_coeff[0] -= np.mean(wv_coeff[0])
     # Shutdown bands
