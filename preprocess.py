@@ -162,8 +162,8 @@ def saveAudio(data, rate, name):
 
 
 # Declare files path
-PCG_path = r"../DatasetCHVNGE/16_TV.mp3"
-ECG_path = r"../DatasetCHVNGE/16_TV.raw"
+PCG_path = r"../DatasetCHVNGE/5_AV.mp3"
+ECG_path = r"../DatasetCHVNGE/5_AV.raw"
 
 # Import PCG
 a = pydub.AudioSegment.from_mp3(PCG_path)
@@ -178,21 +178,23 @@ ECG = np.loadtxt(ECG_path, delimiter=",", dtype=int)
 ECG_rate = 500
 ECG_bit_width = 12
 ECG_resolution = (2 ** ECG_bit_width)-1
+
+visualizeStacked(ECG, PCG)
 # %% ECG Processing
 
 # Normalize full-scale
 # int 12 bits (scale -0.5;0.5)
-ECG_v = (ECG - ECG_resolution/2) / (ECG_resolution)
+# ECG_v = (ECG - ECG_resolution/2) / (ECG_resolution)
 
-# Wavelet denoising
-ECG_wv_denoised = ecgWVDenoise(ECG_v, 'db4', 8, universal)
-e_ECG = residuals(ECG_wv_denoised, ECG_v)
+# # Wavelet denoising
+# ECG_wv_denoised = ecgWVDenoise(ECG_v, 'db4', 8, universal)
+# e_ECG = residuals(ECG_wv_denoised, ECG_v)
 
-# Calculate ECG Noise Metrics
-mse_ECG = meanSquareError(ECG_wv_denoised, ECG_v)
-pnid_ECG = totalPNID(e_ECG, ECG_v)
+# # Calculate ECG Noise Metrics
+# mse_ECG = meanSquareError(ECG_wv_denoised, ECG_v)
+# pnid_ECG = totalPNID(e_ECG, ECG_v)
 
-print("MSE ECG: ", mse_ECG, "\nNoise Distortion: ", pnid_ECG)
+# print("MSE ECG: ", mse_ECG, "\nNoise Distortion: ", pnid_ECG)
 
 # %% Plots ECG
 
@@ -224,24 +226,24 @@ print("MSE ECG: ", mse_ECG, "\nNoise Distortion: ", pnid_ECG)
 # %% PCG Processing
 
 # Normalize full-scale
-PCG_v = (PCG) / (PCG_resolution)  # uint 16 bits (scale -0.5;0.5)
-# Signal Denoise
-PCG_wv_denoised = pcgWVDenoise(PCG_v, normalshrink_lambda)
-e_PCG = residuals(PCG_wv_denoised, PCG_v)
+# PCG_v = (PCG) / (PCG_resolution)  # uint 16 bits (scale -0.5;0.5)
+# # Signal Denoise
+# PCG_wv_denoised = pcgWVDenoise(PCG_v, normalshrink_lambda)
+# e_PCG = residuals(PCG_wv_denoised, PCG_v)
 
-# Calculate PCG Noise Metrics
-mse_PCG = meanSquareError(PCG_wv_denoised, PCG_v)
-pnid_PCG = totalPNID(e_PCG, PCG_v)
+# # Calculate PCG Noise Metrics
+# mse_PCG = meanSquareError(PCG_wv_denoised, PCG_v)
+# pnid_PCG = totalPNID(e_PCG, PCG_v)
 
-print("MSE PCG: ", mse_PCG, "\nNoise Distortion: ", pnid_PCG)
+# print("MSE PCG: ", mse_PCG, "\nNoise Distortion: ", pnid_PCG)
 
 
 # %%
-visualizeStacked(ECG, PCG)
-# visualizeStacked(ECG_wv_denoised[1000:6000], PCG_wv_denoised[16000:96000])
-visualizeStacked(PCG_v, PCG_wv_denoised)
-visualizeStacked(ECG_v, ECG_wv_denoised)
+# visualizeStacked(ECG, PCG)
+# # visualizeStacked(ECG_wv_denoised[1000:6000], PCG_wv_denoised[16000:96000])
+# visualizeStacked(PCG_v, PCG_wv_denoised)
+# visualizeStacked(ECG_v, ECG_wv_denoised)
 
-# playback(PCG_wv_denoised, PCG_rate, t)
+# # playback(PCG_wv_denoised, PCG_rate, t)
 
-saveAudio(PCG_wv_denoised, PCG_rate, "48_TV_clean.wav")
+# saveAudio(PCG_wv_denoised, PCG_rate, "48_TV_clean.wav")
