@@ -57,5 +57,5 @@ def homomorphic_envelope(data, fs_inicial, fs_final):
     envelope_log = signal.medfilt(g, 51)
     envelope = np.exp(envelope_log)
 
-    # return downsample(envelope, fs_inicial, fs_final)
+    return downsample(envelope, fs_inicial, fs_final)
     return envelope
