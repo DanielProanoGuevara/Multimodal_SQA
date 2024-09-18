@@ -54,6 +54,9 @@ denoise, this function allows for the implementation of VisuShrink denoising
 approach
 https://academic.oup.com/biomet/article-abstract/81/3/425/256924?redirectedFrom=fulltext
 
+- min_max_norm(data): computes the min-max normalization of the input data, the
+resulting signal is in the range from 0 to 1.
+
 
 @author: Daniel Proaño-Guevara.
 
@@ -308,7 +311,8 @@ def wavelet_denoise(data, decomposition_level, wavelet_family,
         # Compute lambda threshold for risk reduction
         lambda_threshold = risk_estimator(wv_coeff[band_index])
         # Threshold the band
-        wv_coeff[band_index] = pywt.threshold(wv_coeff[band_index], value=lambda_threshold,
+        wv_coeff[band_index] = pywt.threshold(wv_coeff[band_index],
+                                              value=lambda_threshold,
                                               mode='garrote')
     # Remove mean in approximation band
     wv_coeff[0] -= np.mean(wv_coeff[0])
@@ -365,3 +369,21 @@ def universal_threshold(coefficients):
     """
     n = len(coefficients)
     return np.sqrt(2 * np.log(n))
+
+
+def min_max_norm(data):
+    """
+    Normalize input following min-max.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input 1-D data to be normalized.
+
+    Returns
+    -------
+    numpy.ndarray
+        Normalized 0 to 1 data.
+
+    """
+    return (data - np.min(data))/(np.max(data)-np.min(data))

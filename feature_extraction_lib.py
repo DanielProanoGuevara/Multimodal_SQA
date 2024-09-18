@@ -19,7 +19,6 @@ functions necessary for ECG and PCG signals.
 @version: 0.1
 """
 
-# TODO: Homomorphic Envelogram.
 # TODO: Hilbert Envelope.
 # TODO: Wavelet Envelope.
 # TODO: Power Spectral Density Envelope.
@@ -27,10 +26,11 @@ functions necessary for ECG and PCG signals.
 import numpy as np
 from scipy.signal import firwin, resample_poly
 from scipy import signal
-from preprocessing_lib import downsample
+from preprocessing_lib import downsample, min_max_norm
 
 
-def homomorphic_envelope(data, fs_inicial, fs_final):
+def homomorphic_envelope(data, fs_inicial, fs_final, epsilon=0.01,
+                         median_window=51):
     """
     Compute the homomorphic envelope.
 
@@ -42,6 +42,10 @@ def homomorphic_envelope(data, fs_inicial, fs_final):
         original sampling frequency.
     fs_final : int
         final sampling frequency.
+    epsilon : float
+        replace zero value, corrects logarithm error.
+    median_window : int (odd)
+        kernel size for median filter.
 
     Returns
     -------
@@ -49,13 +53,12 @@ def homomorphic_envelope(data, fs_inicial, fs_final):
         homomorphic envelope of passed data.
 
     """
-
     # energy_signal = data**2
     energy_signal = abs(data)
-    energy = np.where(energy_signal == 0, 0.01, energy_signal)
+    energy = np.where(energy_signal == 0, epsilon, energy_signal)
     g = np.log(energy)
-    envelope_log = signal.medfilt(g, 51)
+    envelope_log = signal.medfilt(g, median_window)
     envelope = np.exp(envelope_log)
 
-    return downsample(envelope, fs_inicial, fs_final)
-    return envelope
+    return min_max_norm(downsample(envelope, fs_inicial, fs_final))
+    # return (envelope)
