@@ -99,7 +99,6 @@ def nmse(x, y):
 
 # %% Denoising
 # Import and analyze the dataset
-
 # Directory containing the files
 directory = '../Physionet_2016_training/training-a/a0288.wav'
 

@@ -161,3 +161,7 @@ def hilbert_envelope(data, fs_inicial, fs_final):
     analytic_signal = signal.hilbert(data)
     envelope = np.abs(analytic_signal)
     return min_max_norm(downsample(envelope, fs_inicial, fs_final))
+
+
+# def psd_envelope(data, fs_inicial, fs_final):
+#     frequencies, time, psd = signal.spectrogram(data, fs_inicial, window=('hamming', 0.25))
