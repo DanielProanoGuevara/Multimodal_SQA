@@ -97,7 +97,7 @@ def nmse(x, y):
     return (np.mean((x - y) ** 2) / np.mean(x ** 2))
 
 
-# %%
+# %% Denoising
 # Import and analyze the dataset
 
 # Directory containing the files
@@ -134,17 +134,29 @@ wavelet_denoised = pplib.wavelet_denoise(despiked_signal, 5, wavelet_family='coi
                                          risk_estimator=pplib.val_SURE_threshold,
                                          shutdown_bands=[-1])
 plt.plot(wavelet_denoised, label='wavelet denoised')
-# plt.grid()
-# plt.legend(loc='lower right')
-# plt.show()
-
-# plt.figure()
-# Homomorphic envelope
-homomorphic = ftelib.homomorphic_envelope(wavelet_denoised, 1000, 50)
-plt.plot(homomorphic, label='homomorphic envelope')
 plt.grid()
 plt.legend(loc='lower right')
 plt.show()
 
+# %% Feature Extraction
+
+# Homomorphic envelope
+plt.figure()
+homomorphic = ftelib.homomorphic_envelope(wavelet_denoised, 1000, 50)
+plt.plot(homomorphic, label='homomorphic envelope')
+
+
+# Wavelet envelope
+wav_env_morl = ftelib.wavelet_envelope(wavelet_denoised, 1000, 50)
+plt.plot(wav_env_morl, label='morlet wavelet envelope')
+
+wav_env_mexh = ftelib.wavelet_envelope(wavelet_denoised, 1000, 50,
+                                       wv_family='mexh')
+plt.plot(wav_env_mexh, label='mexican hat wavelet envelope')
+
+
+plt.grid()
+plt.legend(loc='lower right')
+plt.show()
 
 # %%
