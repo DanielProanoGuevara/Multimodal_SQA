@@ -147,13 +147,18 @@ plt.plot(homomorphic, label='homomorphic envelope')
 
 
 # Wavelet envelope
-wav_env_morl = ftelib.wavelet_envelope(wavelet_denoised, 1000, 50)
+wav_env_morl = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50)
 plt.plot(wav_env_morl, label='morlet wavelet envelope')
 
-wav_env_mexh = ftelib.wavelet_envelope(wavelet_denoised, 1000, 50,
-                                       wv_family='mexh')
+wav_env_mexh = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50,
+                                         wv_family='mexh')
 plt.plot(wav_env_mexh, label='mexican hat wavelet envelope')
 
+dwt_envelope3 = ftelib.d_wavelet_envelope(wavelet_denoised, 1000, 50)
+plt.plot(dwt_envelope3[3:-4], label='DWT envelope lv3')
+
+hilbert_env = ftelib.hilbert_envelope(wavelet_denoised, 1000, 50)
+plt.plot(wav_env_mexh, label='Hilbert envelope')
 
 plt.grid()
 plt.legend(loc='lower right')
