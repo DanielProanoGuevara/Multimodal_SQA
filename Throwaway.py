@@ -14,8 +14,10 @@ from scipy.io import wavfile
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import pywt
+from sklearn.preprocessing import OneHotEncoder
 import preprocessing_lib as pplib
 import feature_extraction_lib as ftelib
+import import_data_lib as importlib
 
 # %%
 # Throwaway Functions
@@ -100,10 +102,14 @@ def nmse(x, y):
 # %% Denoising
 # Import and analyze the dataset
 # Directory containing the files
-directory = '../Physionet_2016_training/training-a/a0288.wav'
+directory_signal = '../Physionet_2016_training/training-a/a0288.wav'
+directory_labels = '../Physionet_2016_labels/training-a-Aut/a0288_StateAns0.mat'
 
-# Load .wav files
-samplerate, original_data = wavfile.read(directory)
+# # Load .wav files
+# samplerate, original_data = wavfile.read(directory)
+
+samplerate, original_data, propagated_labels = importlib.import_physionet_2016(
+    directory_signal, directory_labels)
 
 # original_data = pplib.resolution_normalization(original_data, 15)
 plt.figure()
@@ -163,4 +169,16 @@ plt.grid()
 plt.legend(loc='lower right')
 plt.show()
 
-# %%
+# %% Label encoding
+# Extract the unique labels and reshape the labels for one-hot encoding
+unique_labels = np.unique(propagated_labels)
+
+# Reshape the labels to a 2D array to fit the OneHotEncoder input
+propagated_labels_reshaped = propagated_labels.reshape(-1, 1)
+
+# Initialize the OneHotEncoder
+encoder = OneHotEncoder(sparse_output=False, categories=[unique_labels])
+
+# Fit and transform the labels to one-hot encoding
+one_hot_encoded = np.abs(pplib.downsample(encoder.fit_transform(
+    propagated_labels_reshaped), samplerate, 50))
