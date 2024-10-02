@@ -1,11 +1,13 @@
 """
-Database Importing Library.
+File Processing Library.
 
-@file: import_data_lib_lib.py
+@file: file_process_lib.py
 
 @coding: utf_8
 
-@description: .
+@description: Contains the importing datasets functions. Contains the training,
+test, and validation set splitter, contains the k-fold splitter, contains the
+database processor.
 
 @functions:
 -

@@ -6,10 +6,29 @@ ECG and PCG feature extraction library.
 @coding: utf_8
 
 @description: This module intends to contain all the feature extraction
-functions necessary for ECG and PCG signals.
+functions necessary for ECG and PCG signals. Also the training patches
+creation.
 
 @functions:
--
+- homomorphic_envelope(data, fs_inicial, fs_final, epsilon=0.01,
+                       median_window=51): Extracts the homomorphic envelope
+based on the AM modulation, where the envelope in the modulation signal, and
+the carrier is to be descarded. The signal s(t) is composed by the modulation
+signal e(t) and the carrier by c(t) by: s(t)=e(t)c(t). Its separation is
+acheived with the logarithmic law of multiplications.
+
+- c_wavelet_envelope(data, fs_inicial, fs_final, wv_family='morl',
+                       interest_frequencies=[50, 200]): Extracts the continuous
+wavelet transformation, rendering a scalogram in a specified frequency range,
+then these values are averaged. The methodology is inspired in the PSD of
+Spinger, 2016.
+
+- d_wavelet_envelope(data, fs_inicial, fs_final, wv_family='rbio3.9', level=3):
+Returns the specified level wavelet decimated decomposition, as the envelope.
+
+- def hilbert_envelope(data, fs_inicial, fs_final): Computes the Hilbert
+transform, obtains the magnitude of the complex results, defining it as the
+envelope
 
 
 @author: Daniel Proaño-Guevara.
@@ -19,11 +38,7 @@ functions necessary for ECG and PCG signals.
 @version: 0.1
 """
 
-
-# TODO: Ask about using DWT for the envelop, same additive process or just use
-# lowest frequency one.
-# TODO: Hilbert Envelope.
-# TODO: Power Spectral Density Envelope.
+# TODO Split Sets: Receive features and labels and creates patches
 
 import numpy as np
 from scipy.signal import firwin, resample_poly
@@ -68,7 +83,7 @@ def homomorphic_envelope(data, fs_inicial, fs_final, epsilon=0.01,
 
 
 def c_wavelet_envelope(data, fs_inicial, fs_final, wv_family='morl',
-                       interest_frequencies=[50, 200]):
+                       interest_frequencies=[40, 60]):
     """
     Compute the wavelet envelope based on CWT.
 
@@ -161,7 +176,3 @@ def hilbert_envelope(data, fs_inicial, fs_final):
     analytic_signal = signal.hilbert(data)
     envelope = np.abs(analytic_signal)
     return min_max_norm(downsample(envelope, fs_inicial, fs_final))
-
-
-# def psd_envelope(data, fs_inicial, fs_final):
-#     frequencies, time, psd = signal.spectrogram(data, fs_inicial, window=('hamming', 0.25))
