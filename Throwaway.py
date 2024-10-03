@@ -160,7 +160,7 @@ wav_env_mexh = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50,
 plt.plot(wav_env_mexh, label='mexican hat wavelet envelope')
 
 dwt_envelope3 = ftelib.d_wavelet_envelope(wavelet_denoised, 1000, 50)
-plt.plot(dwt_envelope3[3:-4], label='DWT envelope lv3')
+plt.plot(dwt_envelope3, label='DWT envelope lv3')
 
 hilbert_env = ftelib.hilbert_envelope(wavelet_denoised, 1000, 50)
 plt.plot(wav_env_mexh, label='Hilbert envelope')
@@ -182,3 +182,12 @@ encoder = OneHotEncoder(sparse_output=False, categories=[unique_labels])
 # Fit and transform the labels to one-hot encoding
 one_hot_encoded = np.abs(pplib.downsample(encoder.fit_transform(
     propagated_labels_reshaped), samplerate, 50))
+# %%
+# Training Patches Creation
+
+X, y = ftelib.create_patches(
+    [homomorphic, wav_env_morl, wav_env_mexh, dwt_envelope3, hilbert_env],
+    one_hot_encoded,
+    50,
+    1.5,
+    0.5)
