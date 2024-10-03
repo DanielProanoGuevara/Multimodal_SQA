@@ -28,7 +28,12 @@ Returns the specified level wavelet decimated decomposition, as the envelope.
 
 - def hilbert_envelope(data, fs_inicial, fs_final): Computes the Hilbert
 transform, obtains the magnitude of the complex results, defining it as the
-envelope
+envelope.
+
+- create_patches(Features, Labels, Sampling_Frequency, Patch_Size, Stride):
+Create the input vectors for Supervized training algorithms and the output
+validation one. WARNING: Check that the inputted time yields a propper size for
+the input size of the algorithms.
 
 
 @author: Daniel Proaño-Guevara.
@@ -38,7 +43,6 @@ envelope
 @version: 0.1
 """
 
-# TODO Split Sets: Receive features and labels and creates patches
 
 import numpy as np
 from scipy.signal import firwin, resample_poly
@@ -180,7 +184,35 @@ def hilbert_envelope(data, fs_inicial, fs_final):
 
 
 def create_patches(Features, Labels, Sampling_Frequency, Patch_Size, Stride):
+    """
+    Create overlapping patches from Features and Labels for ANN training.
 
+    Parameters
+    ----------
+    Features : numpy.ndarray
+        Input feature matrix of size (Total_Samples, Num_Features).
+    Labels : numpy.ndarray
+        Input labels matrix of size (Total_Samples, Num_Labels).
+    Sampling_Frequency : int
+        Sampling frequency in Hertz.
+    Patch_Size : float
+        Approximate duration of each patch in seconds.
+    Stride : float
+        Approximate stride duration between patches in seconds.
+
+    Raises
+    ------
+    ValueError
+        Checks input errors.
+
+    Returns
+    -------
+    Features_Patch : numpy.ndarray
+        Patches of features of size (Patch_Samples, Num_Features, Num_Patches).
+    Labels_Patch : numpy.ndarray
+        Patches of labels of size (Patch_Samples, Num_Labels, Num_Patches).
+
+    """
     # Transpose the features vectro to match the shape of the labels
     Features = np.array(Features).T
 
