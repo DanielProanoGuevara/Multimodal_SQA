@@ -30,10 +30,9 @@ Returns the specified level wavelet decimated decomposition, as the envelope.
 transform, obtains the magnitude of the complex results, defining it as the
 envelope.
 
-- create_patches(Features, Labels, Sampling_Frequency, Patch_Size, Stride):
+- create_patches(Features, Labels, Patch_Size, Stride):
 Create the input vectors for Supervized training algorithms and the output
-validation one. WARNING: Check that the inputted time yields a propper size for
-the input size of the algorithms.
+validation one.
 
 
 @author: Daniel Proaño-Guevara.
@@ -183,7 +182,7 @@ def hilbert_envelope(data, fs_inicial, fs_final):
     return min_max_norm(downsample(envelope, fs_inicial, fs_final))
 
 
-def create_patches(Features, Labels, Sampling_Frequency, Patch_Size, Stride):
+def create_patches(Features, Labels, Patch_Size, Stride):
     """
     Create overlapping patches from Features and Labels for ANN training.
 
@@ -193,12 +192,10 @@ def create_patches(Features, Labels, Sampling_Frequency, Patch_Size, Stride):
         Input feature matrix of size (Total_Samples, Num_Features).
     Labels : numpy.ndarray
         Input labels matrix of size (Total_Samples, Num_Labels).
-    Sampling_Frequency : int
-        Sampling frequency in Hertz.
-    Patch_Size : float
-        Approximate duration of each patch in seconds.
-    Stride : float
-        Approximate stride duration between patches in seconds.
+    Patch_Size : int
+        The number of samples for each patch.
+    Stride : int
+        The number of samples to stride between patches.
 
     Raises
     ------
@@ -216,12 +213,8 @@ def create_patches(Features, Labels, Sampling_Frequency, Patch_Size, Stride):
     # Transpose the features vectro to match the shape of the labels
     Features = np.array(Features).T
 
-    # Convert Patch_Size and Stride from time (seconds) to samples
-    patch_size_samples = int(Patch_Size * Sampling_Frequency)
-    stride_samples = int(Stride * Sampling_Frequency)
-
     # Ensure that stride is smaller than patch size
-    if stride_samples >= patch_size_samples:
+    if Stride >= Patch_Size:
         raise ValueError(
             "Stride must be smaller than Ptch Size to ensure overlap.")
 
@@ -240,40 +233,41 @@ def create_patches(Features, Labels, Sampling_Frequency, Patch_Size, Stride):
 
     # Calculate the initial number of patches
     num_patches = int(
-        np.floor((total_samples - patch_size_samples) / stride_samples)) + 1
+        np.floor((total_samples - Patch_Size) / Stride)) + 1
 
     # Adjust stride to fit the data without padding
     if num_patches > 1:
         adjusted_stride_samples = (
-            total_samples - patch_size_samples) / (num_patches - 1)
+            total_samples - Patch_Size) / (num_patches - 1)
     else:
-        adjusted_stride_samples = stride_samples
+        adjusted_stride_samples = Stride
 
     # Round adjusted stride to the nearest integer
     adjusted_stride_samples = int(round(adjusted_stride_samples))
 
     # Recalculate the number of patches with the adjusted stride
     num_patches = int(
-        np.floor((total_samples - patch_size_samples) / adjusted_stride_samples)) + 1
+        np.floor((total_samples - Patch_Size) / adjusted_stride_samples)) + 1
 
     # Ensure adjusted stride is less than patch size
-    if adjusted_stride_samples >= patch_size_samples:
+    if adjusted_stride_samples >= Patch_Size:
         raise ValueError(
-            "Adjusted stride is not smaller than patch size. Cannot create overlap")
+            "Adjusted stride is not smaller than patch size." +
+            " Cannot create overlap")
 
     # Initialize the output arrays
-    Features_Patch = np.zeros((patch_size_samples, num_features, num_patches))
-    Labels_Patch = np.zeros((patch_size_samples, num_labels, num_patches))
+    Features_Patch = np.zeros((Patch_Size, num_features, num_patches))
+    Labels_Patch = np.zeros((Patch_Size, num_labels, num_patches))
 
     for i in range(num_patches):
         # Calculate start and end inices for the current patch
         start_idx = i * adjusted_stride_samples
-        end_idx = start_idx + patch_size_samples
+        end_idx = start_idx + Patch_Size
 
         # Adjust indices to not exceed total samples
         if end_idx > total_samples:
             # Shift the window back so the last patch fits exactly
-            start_idx = total_samples - patch_size_samples
+            start_idx = total_samples - Patch_Size
             end_idx = total_samples
 
         Features_Patch[:, :, i] = Features[start_idx:end_idx, :]
