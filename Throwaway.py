@@ -102,8 +102,8 @@ def nmse(x, y):
 # %% Denoising
 # Import and analyze the dataset
 # Directory containing the files
-directory_signal = '../Physionet_2016_training/training-a/a0288.wav'
-directory_labels = '../Physionet_2016_labels/training-a-Aut/a0288_StateAns0.mat'
+directory_signal = r'../Physionet_2016_training/training-a/a0288.wav'
+directory_labels = r'../Physionet_2016_labels/training-a-Aut/a0288_StateAns0.mat'
 
 # # Load .wav files
 # samplerate, original_data = wavfile.read(directory)
@@ -163,7 +163,7 @@ dwt_envelope3 = ftelib.d_wavelet_envelope(wavelet_denoised, 1000, 50)
 plt.plot(dwt_envelope3, label='DWT envelope lv3')
 
 hilbert_env = ftelib.hilbert_envelope(wavelet_denoised, 1000, 50)
-plt.plot(wav_env_mexh, label='Hilbert envelope')
+plt.plot(hilbert_env, label='Hilbert envelope')
 
 plt.grid()
 plt.legend(loc='lower right')
@@ -186,8 +186,8 @@ one_hot_encoded = np.abs(pplib.downsample(encoder.fit_transform(
 # Training Patches Creation
 
 X, y = ftelib.create_patches(
-    [homomorphic, wav_env_morl, wav_env_mexh, dwt_envelope3, hilbert_env],
-    one_hot_encoded,
-    50,
-    1.5,
-    0.5)
+    Features=[homomorphic, wav_env_morl,
+              wav_env_mexh, dwt_envelope3, hilbert_env],
+    Labels=one_hot_encoded,
+    Patch_Size=8,
+    Stride=3)
