@@ -247,20 +247,18 @@ def schmidt_spike_removal(original_signal, fs):
         # spike position. If that is empty, take the start of the window
         if any(zero_crossings[:spike_position]):
             spike_start = np.max(np.nonzero(
-                zero_crossings[:spike_position])) + 1
+                zero_crossings[:spike_position])[0]) + 1
         else:
             spike_start = 0
 
         # Find the end of the spike, finding the first zero crossing after
         # spike position. If that is empty, take the end of the window
-        # if any(zero_crossings[spike_position:]):
-        #     spike_end = np.min(np.nonzero(zero_crossings[spike_position:]))
-        #     + spike_position
-        # else:
-        #     spike_end = windowsize - 1
-
-        zero_crossings[:spike_position] = 0
-        spike_end = min([np.min(np.where(zero_crossings)[0]), windowsize])
+        zero_crossings[:spike_position] = False
+        indices = np.where(zero_crossings)[0]
+        if indices.size > 0:
+            spike_end = indices[0]
+        else:
+            spike_end = windowsize - 1
 
         # Set to zero
         # change to 0.00001 after standardization

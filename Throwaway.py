@@ -132,11 +132,11 @@ resample = pplib.downsample(z_norm, samplerate, 1000)
 plt.plot(resample, label='resampled 1kHz')
 
 # Schmidt despiking
-# despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
-# plt.plot(despiked_signal, label='despiked signal')
+despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
+plt.plot(despiked_signal, label='despiked signal')
 
 # wavelet denoising
-wavelet_denoised = pplib.wavelet_denoise(resample, 5, wavelet_family='coif4',
+wavelet_denoised = pplib.wavelet_denoise(despiked_signal, 5, wavelet_family='coif4',
                                          risk_estimator=pplib.val_SURE_threshold,
                                          shutdown_bands=[-1])
 plt.plot(wavelet_denoised, label='wavelet denoised')
