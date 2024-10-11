@@ -387,3 +387,7 @@ def min_max_norm(data):
 
     """
     return (data - np.min(data))/(np.max(data)-np.min(data))
+
+
+def min_max_norm2(data):
+    return (2*(data - np.min(data))/(np.max(data)-np.min(data)))-1
