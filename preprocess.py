@@ -162,8 +162,8 @@ def saveAudio(data, rate, name):
 
 
 # Declare files path
-PCG_path = r"../DatasetCHVNGE/17_TV.mp3"
-ECG_path = r"../DatasetCHVNGE/17_TV.raw"
+PCG_path = r"../DatasetCHVNGE/4_TV.mp3"
+ECG_path = r"../DatasetCHVNGE/4_TV.raw"
 
 # Import PCG
 a = pydub.AudioSegment.from_mp3(PCG_path)
@@ -179,7 +179,10 @@ ECG_rate = 500
 ECG_bit_width = 12
 ECG_resolution = (2 ** ECG_bit_width)-1
 
-visualizeStacked(ECG, PCG)
+plt.figure()
+plt.plot(PCG[55000:75000])
+
+# visualizeStacked(ECG, PCG)
 # %% ECG Processing
 
 # Normalize full-scale
