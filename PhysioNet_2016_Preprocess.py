@@ -4,6 +4,7 @@ import numpy as np
 from scipy.io import wavfile
 import matplotlib.pyplot as plt
 from scipy.stats import norm
+import pandas as pd
 import pywt
 from sklearn.preprocessing import OneHotEncoder
 import preprocessing_lib as pplib
@@ -13,8 +14,8 @@ import file_process_lib as importlib
 # Process all database
 
 # Path to directories
-wav_dir = r"Physionet_2016_training"
-mat_dir = r"Physionet_2016_labels"
+wav_dir = r"..\Physionet_2016_training"
+mat_dir = r"..\Physionet_2016_labels"
 
 # Collect and pair .wav and .mat Files
 # Get all .wav files
@@ -63,29 +64,39 @@ for idx, (patient_id, wav_path, mat_path) in enumerate(paired_files):
             wav_path, mat_path)
         time = original_data.size / samplerate
         if time < MIN_DURATION:
-            # print(f"Skipping Patient ID {patient_id}: Audio duration {
-            #     time:.2f}s is less than the minimum required {MIN_DURATION}s.")
+            print(
+                f"Skipping Patient ID {patient_id}: Audio duration {time:.2f}s is less than the minimum required {MIN_DURATION}s.")
             continue  # Skip the file
 
         # Process
         data = np.copy(original_data)
         z_norm = pplib.z_score_standardization(data)
+
         # Resample 1kHz
         resample = pplib.downsample(z_norm, samplerate, 1000)
+
         # Schmidt despiking
         despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
+
         # wavelet denoising
         wavelet_denoised = pplib.wavelet_denoise(
             despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[-1])
+
         # Feature Extraction
         # Homomorphic Envelope
         homomorphic = ftelib.homomorphic_envelope(wavelet_denoised, 1000, 50)
+
         # CWT Scalogram Envelope
-        cwt_morl = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50)
+        cwt_morl = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50,
+                                             interest_frequencies=[40, 60])
+
         cwt_mexh = ftelib.c_wavelet_envelope(
-            wavelet_denoised, 1000, 50, wv_family='mexh')
+            wavelet_denoised, 1000, 50, wv_family='mexh',
+            interest_frequencies=[40, 60])
+
         # 3rd decomposition DWT
-        dwt = ftelib.d_wavelet_envelope(wavelet_denoised, 1000, 50)
+        # dwt = ftelib.d_wavelet_envelope(wavelet_denoised, 1000, 50)
+
         # Hilbert Envelope
         hilbert_env = ftelib.hilbert_envelope(wavelet_denoised, 1000, 50)
 
@@ -105,7 +116,8 @@ for idx, (patient_id, wav_path, mat_path) in enumerate(paired_files):
             encoder.fit_transform(propagated_labels_reshaped), samplerate, 50))
 
         # Organize
-        features = [homomorphic, cwt_morl, cwt_mexh, dwt, hilbert_env]
+        features = np.column_stack(
+            (homomorphic, cwt_morl, cwt_mexh, hilbert_env))
         labels = one_hot_encoded
 
         # Append data to lists
@@ -114,5 +126,17 @@ for idx, (patient_id, wav_path, mat_path) in enumerate(paired_files):
         labels_list.append(labels)
 
     except Exception as e:
-        # print(f"Error proccessing Patient ID {patient_id}: {e}")
+        print(f"Error proccessing Patient ID {patient_id}: {e}")
         continue  # Skip the file
+
+# Create Dataframe
+df = pd.DataFrame({
+    'Patient ID': patient_ids,
+    'Features': features_list,
+    'Labels': labels_list
+})
+
+# Save the DataFrame to a pickle file
+output_pickle_path = r'..\preprocessed_physionet_2016.pkl'
+df.to_pickle(output_pickle_path)
+print(f"DataFrame saved to {output_pickle_path}")

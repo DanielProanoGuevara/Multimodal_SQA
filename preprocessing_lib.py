@@ -219,15 +219,38 @@ def schmidt_spike_removal(original_signal, fs):
     # Find the window size (500 ms)
     windowsize = round(fs / 2)
 
+    # Check if signal length is less than window size
+    if len(original_signal) < windowsize:
+        # print("Signal length is shorter than window size. Returning original signal.")
+        return original_signal.copy()
+
     # Find any samples outside of an integer number of windows
     trailingsamples = len(original_signal) % windowsize
 
+    # Handle slicing when trailinsamples is zero
+    if trailingsamples > 0:
+        signal_to_reshape = original_signal[:-trailingsamples]
+    else:
+        signal_to_reshape = original_signal
+
+    # Check if signal to reshape is zero
+    if len(signal_to_reshape) == 0:
+        return original_signal.copy()
+
     # Reshape the signal into a number of windows
-    sampleframes = np.reshape(original_signal[:-trailingsamples],
-                              (windowsize, -1), order='F')
+    try:
+        sampleframes = np.reshape(
+            signal_to_reshape, (windowsize, -1), order='F')
+    except ValueError:
+        # Reshaping failed, return original signal
+        return original_signal.copy()
 
     # Find the MAAs
     MAAs = np.max(np.abs(sampleframes), axis=0)
+
+    # Check if MAAs is empty
+    if MAAs.size == 0:
+        return original_signal.copy()
 
     # While there are still samples greater than 3 * the median value of the
     # MAAs, then remove those spikes
@@ -266,6 +289,10 @@ def schmidt_spike_removal(original_signal, fs):
 
         # Recalculate MAAs
         MAAs = np.max(np.abs(sampleframes), axis=0)
+
+        # Check for empty MAAs
+        if MAAs.size == 0 or np.isnan(MAAs).any():
+            break
 
     # Reshape the despiked signal back to 1D
     despiked_signal = np.reshape(sampleframes, -1, order='F')
