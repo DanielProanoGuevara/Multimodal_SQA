@@ -101,6 +101,6 @@ df = pd.DataFrame({
 
 # Save the DataFrame to a pickle file
 output_pickle_path = r'..\preprocessed_CHVNGE_PCG_initial.pkl'
-df.to_pickle('output_pickle_path')
+df.to_pickle(output_pickle_path)
 
 print(f"DataFrame saved to {output_pickle_path}")
