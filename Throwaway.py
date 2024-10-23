@@ -11,11 +11,16 @@ Created on Fri Jul 12 11:16:31 2024
 import os
 import glob
 import numpy as np
+import pandas as pd
 from scipy.io import wavfile
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import pywt
-from sklearn.preprocessing import OneHotEncoder
+import pydub
+import time
+import sounddevice as sd
+from scipy import signal
+from scipy.io.wavfile import write
 import preprocessing_lib as pplib
 import feature_extraction_lib as ftelib
 import file_process_lib as importlib
@@ -103,204 +108,90 @@ def nmse(x, y):
 # %% Denoising
 # Import and analyze the dataset
 # Directory containing the files
-directory_signal = r'../Physionet_2016_training/training-e/e00603.wav'
-directory_labels = r'../Physionet_2016_labels/training-e-Aut/e00603_StateAns0.mat'
+root_dir = r'..\DatasetCHVNGE'
 
-# # Load .wav files
-# samplerate, original_data = wavfile.read(directory)
+# Get all pcg files
+pcg_files = glob.glob(os.path.join(root_dir, '*.mp3'))
 
-samplerate, original_data, propagated_labels = importlib.import_physionet_2016(
-    directory_signal, directory_labels)
+# %% Extract patient ID and Auscultation Point
 
-# original_data = pplib.resolution_normalization(original_data, 15)
-plt.figure()
+# Initialize lists to store file information
+patient_ids = []
+auscultation_points = []
+features_list = []
 
-# create copy of original data
-data = np.copy(original_data)
-plt.plot(data, label='original')
+for file_path in pcg_files:
+    # Get the base name of the file
+    base_name = os.path.basename(file_path)
+    # Remove the extension
+    file_name, _ = os.path.splitext(base_name)
+    # Split the file name into parts
+    parts = file_name.split('_')
+    try:
+        # Extract patient ID
+        patient_id_str = parts[0]
+        patient_id = int(patient_id_str)
 
-# standardize data
-z_norm = pplib.z_score_standardization(data)
-plt.plot(z_norm, label='standardized')
-plt.grid()
-plt.legend(loc='lower right')
-plt.show()
+        # Extract auscultation point (join remaining parts)
+        auscultation_point = '_'.join(parts[1:])
 
-# resample 1k Hz
-plt.figure()
-resample = pplib.downsample(z_norm, samplerate, 1000)
-plt.plot(resample, label='resampled 1kHz')
+        # Load PCG file
+        samplerate, pcg = importlib.import_CHVNGE_PCG(file_path)
 
-# Schmidt despiking
-despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
-plt.plot(despiked_signal, label='despiked signal')
+        # Extract features
+        data = np.copy(pcg)
+        z_norm = pplib.z_score_standardization(data)
 
-# wavelet denoising
-wavelet_denoised = pplib.wavelet_denoise(despiked_signal, 5, wavelet_family='coif4',
-                                         risk_estimator=pplib.val_SURE_threshold,
-                                         shutdown_bands=[-1])
-plt.plot(wavelet_denoised, label='wavelet denoised')
-plt.grid()
-plt.legend(loc='lower right')
-plt.show()
+        # Resample 1kHz
+        resample = pplib.downsample(z_norm, samplerate, 1000)
 
-# %% Feature Extraction
+        # Schmidt despiking
+        despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
 
-# Homomorphic envelope
-plt.figure()
-homomorphic = ftelib.homomorphic_envelope(wavelet_denoised, 1000, 50)
-plt.plot(homomorphic, label='homomorphic envelope')
+        # wavelet denoising
+        wavelet_denoised = pplib.wavelet_denoise(
+            despiked_signal, 5, wavelet_family='coif4',
+            risk_estimator=pplib.val_SURE_threshold,
+            shutdown_bands=[-1, 1])
 
+        # Feature Extraction
+        # Homomorphic Envelope
+        homomorphic = ftelib.homomorphic_envelope(wavelet_denoised, 1000, 50)
 
-# Wavelet envelope
-wav_env_morl = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50)
-plt.plot(wav_env_morl, label='morlet wavelet envelope')
+        # CWT Scalogram Envelope
+        cwt_morl = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50,
+                                             interest_frequencies=[40, 60])
 
-wav_env_mexh = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50,
-                                         wv_family='mexh')
-plt.plot(wav_env_mexh, label='mexican hat wavelet envelope')
+        cwt_mexh = ftelib.c_wavelet_envelope(
+            wavelet_denoised, 1000, 50, wv_family='mexh',
+            interest_frequencies=[40, 60])
 
-dwt_envelope3 = ftelib.d_wavelet_envelope(wavelet_denoised, 1000, 50)
-plt.plot(dwt_envelope3, label='DWT envelope lv3')
+        # Hilbert Envelope
+        hilbert_env = ftelib.hilbert_envelope(wavelet_denoised, 1000, 50)
 
-hilbert_env = ftelib.hilbert_envelope(wavelet_denoised, 1000, 50)
-plt.plot(hilbert_env, label='Hilbert envelope')
+        # Organize and stack features
+        features = np.column_stack(
+            (homomorphic, cwt_morl, cwt_mexh, hilbert_env))
 
-plt.grid()
-plt.legend(loc='lower right')
-plt.show()
+        # Append to lists
+        patient_ids.append(patient_id)
+        auscultation_points.append(auscultation_point)
+        features_list.append(features)
 
-# %% Label encoding
-# Extract the unique labels and reshape the labels for one-hot encoding
-unique_labels = np.unique(propagated_labels)
-
-# Reshape the labels to a 2D array to fit the OneHotEncoder input
-propagated_labels_reshaped = propagated_labels.reshape(-1, 1)
-
-# Initialize the OneHotEncoder
-encoder = OneHotEncoder(sparse_output=False, categories=[unique_labels])
-
-# Fit and transform the labels to one-hot encoding
-one_hot_encoded = np.abs(pplib.downsample(encoder.fit_transform(
-    propagated_labels_reshaped), samplerate, 50))
+    except (ValueError, IndexError):
+        print(f"Skipping file with unexpected format: {file_path}")
+        continue
 
 
-plt.figure()
-plt.plot(pplib.min_max_norm2(wavelet_denoised))
-# %%
-# # Training Patches Creation
+# Create the DataFrame
+df = pd.DataFrame({
+    'Patient_ID': patient_ids,
+    'Auscultation_Point': auscultation_points,
+    'Features': features_list
+})
 
-# X, y = ftelib.create_patches(
-#     Features=[homomorphic, wav_env_morl,
-#               wav_env_mexh, dwt_envelope3, hilbert_env],
-#     Labels=one_hot_encoded,
-#     Patch_Size=8,
-#     Stride=3)
+# Save the DataFrame to a pickle file
+output_pickle_path = r'..\preprocessed_CHVNGE_PCG_initial.pkl'
+df.to_pickle('output_pickle_path')
 
-# %%
-# # Process all database
-
-# # Path to directories
-# wav_dir = r"..\Physionet_2016_training"
-# mat_dir = r"..\Physionet_2016_labels"
-
-# # Collect and pair .wav and .mat Files
-# # Get all .wav files
-# wav_files = glob.glob(os.path.join(wav_dir, '**', '*.wav'), recursive=True)
-
-# # Get all .mat files
-# mat_files = glob.glob(os.path.join(mat_dir, '**', '*.mat'), recursive=True)
-
-# # Create Dictionaries to Map Patient ID's to File Paths
-
-# wav_dict = {}
-# for wav_path in wav_files:
-#     # Extract patient ID (e.g., 'a0001')
-#     patient_id = os.path.splitext(os.path.basename(wav_path))[0]
-#     wav_dict[patient_id] = wav_path
-
-# mat_dict = {}
-# for mat_path in mat_files:
-#     # Extract patient ID by removing suffix after '_State' and extension
-#     basename = os.path.basename(mat_path)
-#     patient_id = basename.split('_State')[0]
-#     mat_dict[patient_id] = mat_path
-
-# # Pair the files
-# # Find common patient IDs
-# common_patient_ids = set(wav_dict.keys()).intersection(set(mat_dict.keys()))
-
-# # Create a list of (patient_id, wav_path, mat_path) tuples
-# paired_files = [(patient_id, wav_dict[patient_id], mat_dict[patient_id])
-#                 for patient_id in common_patient_ids]
-
-# print(f"Found {len(paired_files)} paired files.")
-
-# # Define the minimal duration in seconds
-# MIN_DURATION = 2.0
-
-# # Initialize lists to store data
-# patient_ids = []
-# features_list = []
-# labels_list = []
-
-# # Process all files
-# for idx, (patient_id, wav_path, mat_path) in enumerate(paired_files):
-#     try:
-#         samplerate, original_data, propagated_labels = importlib.import_physionet_2016(
-#             wav_path, mat_path)
-#         time = original_data.size / samplerate
-#         if time < MIN_DURATION:
-#             # print(f"Skipping Patient ID {patient_id}: Audio duration {
-#             #     time:.2f}s is less than the minimum required {MIN_DURATION}s.")
-#             continue  # Skip the file
-
-#         # Process
-#         data = np.copy(original_data)
-#         z_norm = pplib.z_score_standardization(data)
-#         # Resample 1kHz
-#         resample = pplib.downsample(z_norm, samplerate, 1000)
-#         # Schmidt despiking
-#         despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
-#         # wavelet denoising
-#         wavelet_denoised = pplib.wavelet_denoise(
-#             despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[-1])
-#         # Feature Extraction
-#         # Homomorphic Envelope
-#         homomorphic = ftelib.homomorphic_envelope(wavelet_denoised, 1000, 50)
-#         # CWT Scalogram Envelope
-#         cwt_morl = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50)
-#         cwt_mexh = ftelib.c_wavelet_envelope(
-#             wavelet_denoised, 1000, 50, wv_family='mexh')
-#         # 3rd decomposition DWT
-#         dwt = ftelib.d_wavelet_envelope(wavelet_denoised, 1000, 50)
-#         # Hilbert Envelope
-#         hilbert_env = ftelib.hilbert_envelope(wavelet_denoised, 1000, 50)
-
-#         # Label Processing
-#         # Extract the unique labels and reshape the labels for one-hot encoding
-#         unique_labels = np.unique(propagated_labels)
-
-#         # Reshape the labels to a 2D array to fit the OneHotEncoder input
-#         propagated_labels_reshaped = propagated_labels.reshape(-1, 1)
-
-#         # Initialize the OneHotEncoder
-#         encoder = OneHotEncoder(sparse_output=False,
-#                                 categories=[unique_labels])
-
-#         # Fit and transform the labels to one-hot encoding
-#         one_hot_encoded = np.abs(pplib.downsample(
-#             encoder.fit_transform(propagated_labels_reshaped), samplerate, 50))
-
-#         # Organize
-#         features = [homomorphic, cwt_morl, cwt_mexh, dwt, hilbert_env]
-#         labels = one_hot_encoded
-
-#         # Append data to lists
-#         patient_ids.append(patient_id)
-#         features_list.append(features)
-#         labels_list.append(labels)
-
-#     except Exception as e:
-#         # print(f"Error proccessing Patient ID {patient_id}: {e}")
-#         continue  # Skip the file
+print(f"DataFrame saved to {output_pickle_path}")
