@@ -30,7 +30,7 @@ import file_process_lib as importlib
 # %% Denoising
 # Import and analyze the dataset
 
-directory = r'../LUDB/data/1'
+directory = r'../LUDB/data/2'
 
 # Read as record
 record = wfdb.rdrecord(directory)
