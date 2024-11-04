@@ -2,6 +2,7 @@ import os
 import glob
 import numpy as np
 import pandas as pd
+import random
 from sklearn.preprocessing import OneHotEncoder
 import preprocessing_lib as pplib
 import feature_extraction_lib as ftelib
@@ -12,6 +13,7 @@ import file_process_lib as importlib
 # Path to directories
 wav_dir = r"..\Physionet_2016_training"
 mat_dir = r"..\Physionet_2016_labels"
+
 
 # Collect and pair .wav and .mat Files
 # Get all .wav files
@@ -43,96 +45,149 @@ common_patient_ids = set(wav_dict.keys()).intersection(set(mat_dict.keys()))
 paired_files = [(patient_id, wav_dict[patient_id], mat_dict[patient_id])
                 for patient_id in common_patient_ids]
 
-print(f"Found {len(paired_files)} paired files.")
 
-# Define the minimal duration in seconds
-MIN_DURATION = 2.0
+# Randomize the paired files
+random.shuffle(paired_files)
 
-# Initialize lists to store data
-patient_ids = []
-features_list = []
-labels_list = []
 
-# Process all files
-for idx, (patient_id, wav_path, mat_path) in enumerate(paired_files):
-    try:
-        samplerate, original_data, propagated_labels = importlib.import_physionet_2016(
-            wav_path, mat_path)
-        time = original_data.size / samplerate
-        if time < MIN_DURATION:
-            print(
-                f"Skipping Patient ID {patient_id}: Audio duration {time:.2f}s is less than the minimum required {MIN_DURATION}s.")
+# Split the paired files into train, test, and validation sets
+train_split = int(0.6 * len(paired_files))
+test_split = int(0.8 * len(paired_files))
+
+train_files = paired_files[:train_split]
+test_files = paired_files[train_split:test_split]
+validation_files = paired_files[test_split:]
+
+
+# Function to process files and create a DataFrame
+def process_files(paired_files):
+
+    # Define the minimal duration in seconds
+    MIN_DURATION = 2.0
+
+    # Initialize lists to store data
+    patient_ids = []
+    features_list = []
+    labels_list = []
+
+    # Process all files
+    for idx, (patient_id, wav_path, mat_path) in enumerate(paired_files):
+        try:
+            samplerate, original_data, propagated_labels = importlib.import_physionet_2016(
+                wav_path, mat_path)
+            time = original_data.size / samplerate
+            if time < MIN_DURATION:
+                print(
+                    f"Skipping Patient ID {patient_id}: Audio duration {time:.2f}s is less than the minimum required {MIN_DURATION}s.")
+                continue  # Skip the file
+
+            # Process
+            data = np.copy(original_data)
+            z_norm = pplib.z_score_standardization(data)
+
+            # Resample 1kHz
+            resample = pplib.downsample(z_norm, samplerate, 1000)
+
+            # Schmidt despiking
+            despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
+
+            # wavelet denoising
+            wavelet_denoised = pplib.wavelet_denoise(
+                despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[-1])
+
+            # Feature Extraction
+            # Homomorphic Envelope
+            homomorphic = ftelib.homomorphic_envelope(
+                wavelet_denoised, 1000, 50)
+
+            # CWT Scalogram Envelope
+            cwt_morl = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50,
+                                                 interest_frequencies=[40, 60])
+
+            cwt_mexh = ftelib.c_wavelet_envelope(
+                wavelet_denoised, 1000, 50, wv_family='mexh',
+                interest_frequencies=[40, 60])
+
+            # 3rd decomposition DWT
+            # dwt = ftelib.d_wavelet_envelope(wavelet_denoised, 1000, 50)
+
+            # Hilbert Envelope
+            hilbert_env = ftelib.hilbert_envelope(wavelet_denoised, 1000, 50)
+
+            # Label Processing
+            # Extract the unique labels and reshape the labels for one-hot encoding
+            unique_labels = np.unique(propagated_labels)
+
+            # Reshape the labels to a 2D array to fit the OneHotEncoder input
+            propagated_labels_reshaped = propagated_labels.reshape(-1, 1)
+
+            # Initialize the OneHotEncoder
+            encoder = OneHotEncoder(sparse_output=False,
+                                    categories=[unique_labels])
+
+            # Fit and transform the labels to one-hot encoding
+            one_hot_encoded = np.abs(pplib.downsample(
+                encoder.fit_transform(propagated_labels_reshaped), samplerate, 50))
+
+            # Organize
+            features = np.column_stack(
+                (homomorphic, cwt_morl, cwt_mexh, hilbert_env))
+            labels = one_hot_encoded
+
+            # Append data to lists
+            patient_ids.append(patient_id)
+            features_list.append(features)
+            labels_list.append(labels)
+
+        except Exception as e:
+            print(f"Error proccessing Patient ID {patient_id}: {e}")
             continue  # Skip the file
 
-        # Process
-        data = np.copy(original_data)
-        z_norm = pplib.z_score_standardization(data)
+    # Create Dataframe
+    df = pd.DataFrame({
+        'Patient ID': patient_ids,
+        'Features': features_list,
+        'Labels': labels_list
+    })
+    return df
 
-        # Resample 1kHz
-        resample = pplib.downsample(z_norm, samplerate, 1000)
 
-        # Schmidt despiking
-        despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
+# Process and save train, test, and validate datasets
+train_df = process_files(train_files)
+test_df = process_files(test_files)
+validation_df = process_files(validation_files)
 
-        # wavelet denoising
-        wavelet_denoised = pplib.wavelet_denoise(
-            despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[-1])
+# Modify the DataFrame to store each feature separately
+train_df['Homomorphic'] = train_df['Features'].apply(lambda x: x[:, 0])
+train_df['CWT_Morl'] = train_df['Features'].apply(lambda x: x[:, 1])
+train_df['CWT_Mexh'] = train_df['Features'].apply(lambda x: x[:, 2])
+train_df['Hilbert_Env'] = train_df['Features'].apply(lambda x: x[:, 3])
+train_df = train_df.drop(columns=['Features'])
 
-        # Feature Extraction
-        # Homomorphic Envelope
-        homomorphic = ftelib.homomorphic_envelope(wavelet_denoised, 1000, 50)
+test_df['Homomorphic'] = test_df['Features'].apply(lambda x: x[:, 0])
+test_df['CWT_Morl'] = test_df['Features'].apply(lambda x: x[:, 1])
+test_df['CWT_Mexh'] = test_df['Features'].apply(lambda x: x[:, 2])
+test_df['Hilbert_Env'] = test_df['Features'].apply(lambda x: x[:, 3])
+test_df = test_df.drop(columns=['Features'])
 
-        # CWT Scalogram Envelope
-        cwt_morl = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50,
-                                             interest_frequencies=[40, 60])
+validation_df['Homomorphic'] = validation_df['Features'].apply(
+    lambda x: x[:, 0])
+validation_df['CWT_Morl'] = validation_df['Features'].apply(lambda x: x[:, 1])
+validation_df['CWT_Mexh'] = validation_df['Features'].apply(lambda x: x[:, 2])
+validation_df['Hilbert_Env'] = validation_df['Features'].apply(
+    lambda x: x[:, 3])
+validation_df = validation_df.drop(columns=['Features'])
 
-        cwt_mexh = ftelib.c_wavelet_envelope(
-            wavelet_denoised, 1000, 50, wv_family='mexh',
-            interest_frequencies=[40, 60])
+# Save the DataFrames to pickle files
+train_pickle_path = r'..\train_physionet_2016.pkl'
+test_pickle_path = r'..\test_physionet_2016.pkl'
+validation_pickle_path = r'..\validation_physionet_2016.pkl'
 
-        # 3rd decomposition DWT
-        # dwt = ftelib.d_wavelet_envelope(wavelet_denoised, 1000, 50)
+train_df.to_pickle(train_pickle_path)
+print(f"Train DataFrame saved to {train_pickle_path}")
 
-        # Hilbert Envelope
-        hilbert_env = ftelib.hilbert_envelope(wavelet_denoised, 1000, 50)
+test_df.to_pickle(test_pickle_path)
+print(f"Test DataFrame saved to {test_pickle_path}")
 
-        # Label Processing
-        # Extract the unique labels and reshape the labels for one-hot encoding
-        unique_labels = np.unique(propagated_labels)
-
-        # Reshape the labels to a 2D array to fit the OneHotEncoder input
-        propagated_labels_reshaped = propagated_labels.reshape(-1, 1)
-
-        # Initialize the OneHotEncoder
-        encoder = OneHotEncoder(sparse_output=False,
-                                categories=[unique_labels])
-
-        # Fit and transform the labels to one-hot encoding
-        one_hot_encoded = np.abs(pplib.downsample(
-            encoder.fit_transform(propagated_labels_reshaped), samplerate, 50))
-
-        # Organize
-        features = np.column_stack(
-            (homomorphic, cwt_morl, cwt_mexh, hilbert_env))
-        labels = one_hot_encoded
-
-        # Append data to lists
-        patient_ids.append(patient_id)
-        features_list.append(features)
-        labels_list.append(labels)
-
-    except Exception as e:
-        print(f"Error proccessing Patient ID {patient_id}: {e}")
-        continue  # Skip the file
-
-# Create Dataframe
-df = pd.DataFrame({
-    'Patient ID': patient_ids,
-    'Features': features_list,
-    'Labels': labels_list
-})
-
-# Save the DataFrame to a pickle file
-output_pickle_path = r'..\preprocessed_physionet_2016.pkl'
-df.to_pickle(output_pickle_path)
-print(f"DataFrame saved to {output_pickle_path}")
+validation_df.to_pickle(validation_pickle_path)
+print(f"Validate DataFrame saved to {validation_pickle_path}")
