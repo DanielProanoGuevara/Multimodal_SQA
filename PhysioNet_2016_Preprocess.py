@@ -47,16 +47,17 @@ paired_files = [(patient_id, wav_dict[patient_id], mat_dict[patient_id])
 
 
 # Randomize the paired files
-random.shuffle(paired_files)
-
+# random.shuffle(paired_files)
+# Sort the paired files by patient ID
+paired_files.sort(key=lambda x: x[0])
 
 # Split the paired files into train, test, and validation sets
-train_split = int(0.6 * len(paired_files))
-test_split = int(0.8 * len(paired_files))
+train_split = int(0.8 * len(paired_files))
+# test_split = int(0.8 * len(paired_files))
 
 train_files = paired_files[:train_split]
-test_files = paired_files[train_split:test_split]
-validation_files = paired_files[test_split:]
+# test_files = paired_files[train_split:test_split]
+validation_files = paired_files[train_split:]
 
 
 # Function to process files and create a DataFrame
@@ -127,7 +128,7 @@ def process_files(paired_files):
 
             # Fit and transform the labels to one-hot encoding
             one_hot_encoded = np.abs(pplib.downsample(
-                encoder.fit_transform(propagated_labels_reshaped), samplerate, 50))
+                encoder.fit_transform(propagated_labels_reshaped), samplerate, 50)).astype(int)
 
             # Organize
             features = np.column_stack(
@@ -154,7 +155,7 @@ def process_files(paired_files):
 
 # Process and save train, test, and validate datasets
 train_df = process_files(train_files)
-test_df = process_files(test_files)
+# test_df = process_files(test_files)
 validation_df = process_files(validation_files)
 
 # Modify the DataFrame to store each feature separately
@@ -164,11 +165,11 @@ train_df['CWT_Mexh'] = train_df['Features'].apply(lambda x: x[:, 2])
 train_df['Hilbert_Env'] = train_df['Features'].apply(lambda x: x[:, 3])
 train_df = train_df.drop(columns=['Features'])
 
-test_df['Homomorphic'] = test_df['Features'].apply(lambda x: x[:, 0])
-test_df['CWT_Morl'] = test_df['Features'].apply(lambda x: x[:, 1])
-test_df['CWT_Mexh'] = test_df['Features'].apply(lambda x: x[:, 2])
-test_df['Hilbert_Env'] = test_df['Features'].apply(lambda x: x[:, 3])
-test_df = test_df.drop(columns=['Features'])
+# test_df['Homomorphic'] = test_df['Features'].apply(lambda x: x[:, 0])
+# test_df['CWT_Morl'] = test_df['Features'].apply(lambda x: x[:, 1])
+# test_df['CWT_Mexh'] = test_df['Features'].apply(lambda x: x[:, 2])
+# test_df['Hilbert_Env'] = test_df['Features'].apply(lambda x: x[:, 3])
+# test_df = test_df.drop(columns=['Features'])
 
 validation_df['Homomorphic'] = validation_df['Features'].apply(
     lambda x: x[:, 0])
@@ -180,14 +181,14 @@ validation_df = validation_df.drop(columns=['Features'])
 
 # Save the DataFrames to pickle files
 train_pickle_path = r'..\train_physionet_2016.pkl'
-test_pickle_path = r'..\test_physionet_2016.pkl'
+# test_pickle_path = r'..\test_physionet_2016.pkl'
 validation_pickle_path = r'..\validation_physionet_2016.pkl'
 
 train_df.to_pickle(train_pickle_path)
 print(f"Train DataFrame saved to {train_pickle_path}")
 
-test_df.to_pickle(test_pickle_path)
-print(f"Test DataFrame saved to {test_pickle_path}")
+# test_df.to_pickle(test_pickle_path)
+# print(f"Test DataFrame saved to {test_pickle_path}")
 
 validation_df.to_pickle(validation_pickle_path)
 print(f"Validate DataFrame saved to {validation_pickle_path}")
