@@ -127,8 +127,11 @@ def process_files(paired_files):
                                     categories=[unique_labels])
 
             # Fit and transform the labels to one-hot encoding
-            one_hot_encoded = np.abs(pplib.downsample(
-                encoder.fit_transform(propagated_labels_reshaped), samplerate, 50)).astype(int)
+            # one_hot_encoded = np.abs(pplib.downsample(
+            #     encoder.fit_transform(propagated_labels_reshaped), samplerate, 50))
+
+            one_hot_encoded = encoder.fit_transform(propagated_labels_reshaped)
+            one_hot_encoded = one_hot_encoded[::40, :]
 
             # Organize
             features = np.column_stack(
