@@ -11,8 +11,12 @@ import file_process_lib as importlib
 # Process all database
 
 # Path to directories
-wav_dir = r"..\Physionet_2016_training"
-mat_dir = r"..\Physionet_2016_labels"
+# wav_dir = r"..\Physionet_2016_training"
+# mat_dir = r"..\Physionet_2016_labels"
+
+# Just A-folder
+wav_dir = r"..\Physionet_2016_training\training-a"
+mat_dir = r"..\Physionet_2016_labels\training-a-Aut"
 
 
 # Collect and pair .wav and .mat Files
@@ -94,37 +98,45 @@ def process_files(paired_files):
 
             # wavelet denoising
             wavelet_denoised = pplib.wavelet_denoise(
-                despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[-1])
+                despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[])
+
+            # Butterworth bandpass filtering
+            filtered_pcg = pplib.butterworth_filter(
+                wavelet_denoised, 'bandpass', 2, 1000, [25, 400])
 
             # Feature Extraction
             # Homomorphic Envelope
             homomorphic = ftelib.homomorphic_envelope(
-                wavelet_denoised, 1000, 50)
+                filtered_pcg, 1000, 50)
 
             # CWT Scalogram Envelope
-            cwt_morl = ftelib.c_wavelet_envelope(wavelet_denoised, 1000, 50,
-                                                 interest_frequencies=[40, 60])
+            cwt_morl = ftelib.c_wavelet_envelope(filtered_pcg, 1000, 50,
+                                                 interest_frequencies=[40, 200])
 
             cwt_mexh = ftelib.c_wavelet_envelope(
-                wavelet_denoised, 1000, 50, wv_family='mexh',
-                interest_frequencies=[40, 60])
+                filtered_pcg, 1000, 50, wv_family='mexh',
+                interest_frequencies=[40, 200])
 
             # 3rd decomposition DWT
             # dwt = ftelib.d_wavelet_envelope(wavelet_denoised, 1000, 50)
 
             # Hilbert Envelope
-            hilbert_env = ftelib.hilbert_envelope(wavelet_denoised, 1000, 50)
+            hilbert_env = ftelib.hilbert_envelope(filtered_pcg, 1000, 50)
 
             # Label Processing
+            desired_order = ['S1', 'systole', 'S2', 'diastole']
             # Extract the unique labels and reshape the labels for one-hot encoding
             unique_labels = np.unique(propagated_labels)
+            # Ensure that the desired order matches the unique labels
+            assert set(desired_order) == set(
+                unique_labels), "The desired order does not match the unique labels"
 
             # Reshape the labels to a 2D array to fit the OneHotEncoder input
             propagated_labels_reshaped = propagated_labels.reshape(-1, 1)
 
             # Initialize the OneHotEncoder
             encoder = OneHotEncoder(sparse_output=False,
-                                    categories=[unique_labels])
+                                    categories=[desired_order])
 
             # Fit and transform the labels to one-hot encoding
             # one_hot_encoded = np.abs(pplib.downsample(
