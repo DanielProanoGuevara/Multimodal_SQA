@@ -68,7 +68,7 @@ validation_files = paired_files[train_split:]
 def process_files(paired_files):
 
     # Define the minimal duration in seconds
-    MIN_DURATION = 2.0
+    MIN_DURATION = 1.5
 
     # Initialize lists to store data
     patient_ids = []
@@ -97,12 +97,12 @@ def process_files(paired_files):
             despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
 
             # wavelet denoising
-            wavelet_denoised = pplib.wavelet_denoise(
-                despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[])
+            # wavelet_denoised = pplib.wavelet_denoise(
+            #     despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[])
 
             # Butterworth bandpass filtering
             filtered_pcg = pplib.butterworth_filter(
-                wavelet_denoised, 'bandpass', 2, 1000, [25, 400])
+                despiked_signal, 'bandpass', 6, 1000, [25, 400])
 
             # Feature Extraction
             # Homomorphic Envelope
