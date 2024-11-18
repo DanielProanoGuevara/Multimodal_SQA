@@ -210,67 +210,25 @@ def create_patches(Features, Labels, Patch_Size, Stride):
         Patches of labels of size (Patch_Samples, Num_Labels, Num_Patches).
 
     """
-    # Transpose the features vectro to match the shape of the labels
-    Features = np.array(Features).T
-
-    # Ensure that stride is smaller than patch size
-    if Stride >= Patch_Size:
-        raise ValueError(
-            "Stride must be smaller than Ptch Size to ensure overlap.")
-
-    # Total number of samples
-    total_samples_features = Features.shape[0]
-    total_samples_labels = Labels.shape[0]
-
-    # Check if the number of samples in the Features and Labels match
-    if total_samples_features != total_samples_labels:
-        raise ValueError(
-            "Features and Labels must have the same number of samples (rows).")
-
-    total_samples = total_samples_features
+    # Features = np.array(Features).T
+    total_samples = Features.shape[0]
     num_features = Features.shape[1]
-    num_labels = Labels.shape[1]
-
-    # Calculate the initial number of patches
-    num_patches = int(
-        np.floor((total_samples - Patch_Size) / Stride)) + 1
-
-    # Adjust stride to fit the data without padding
-    if num_patches > 1:
-        adjusted_stride_samples = (
-            total_samples - Patch_Size) / (num_patches - 1)
-    else:
-        adjusted_stride_samples = Stride
-
-    # Round adjusted stride to the nearest integer
+    num_labels = Labels.shape[1] if len(Labels.shape) > 1 else 1
+    num_patches = int(np.floor((total_samples - Patch_Size) / Stride)) + 1
+    adjusted_stride_samples = (
+        total_samples - Patch_Size) / (num_patches - 1) if num_patches > 1 else Stride
     adjusted_stride_samples = int(round(adjusted_stride_samples))
-
-    # Recalculate the number of patches with the adjusted stride
-    num_patches = int(
-        np.floor((total_samples - Patch_Size) / adjusted_stride_samples)) + 1
-
-    # Ensure adjusted stride is less than patch size
-    if adjusted_stride_samples >= Patch_Size:
-        raise ValueError(
-            "Adjusted stride is not smaller than patch size." +
-            " Cannot create overlap")
-
-    # Initialize the output arrays
-    Features_Patch = np.zeros((Patch_Size, num_features, num_patches))
-    Labels_Patch = np.zeros((Patch_Size, num_labels, num_patches))
-
+    Features_Patch = np.zeros((num_patches, Patch_Size, num_features))
+    Labels_Patch = np.zeros((num_patches, Patch_Size, num_labels))
     for i in range(num_patches):
-        # Calculate start and end inices for the current patch
         start_idx = i * adjusted_stride_samples
         end_idx = start_idx + Patch_Size
-
-        # Adjust indices to not exceed total samples
         if end_idx > total_samples:
-            # Shift the window back so the last patch fits exactly
             start_idx = total_samples - Patch_Size
             end_idx = total_samples
-
-        Features_Patch[:, :, i] = Features[start_idx:end_idx, :]
-        Labels_Patch[:, :, i] = Labels[start_idx:end_idx, :]
+        Features_Patch[i] = Features[start_idx:end_idx, :]
+        Labels_Patch[i] = Labels[start_idx:end_idx,
+                                 :] if num_labels > 1 else Labels[start_idx:end_idx]
+    return Features_Patch, Labels_Patch
 
     return Features_Patch, Labels_Patch
