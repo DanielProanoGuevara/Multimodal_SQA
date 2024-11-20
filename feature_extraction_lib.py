@@ -229,6 +229,5 @@ def create_patches(Features, Labels, Patch_Size, Stride):
         Features_Patch[i] = Features[start_idx:end_idx, :]
         Labels_Patch[i] = Labels[start_idx:end_idx,
                                  :] if num_labels > 1 else Labels[start_idx:end_idx]
-    return Features_Patch, Labels_Patch
 
     return Features_Patch, Labels_Patch

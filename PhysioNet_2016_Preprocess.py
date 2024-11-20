@@ -11,12 +11,12 @@ import file_process_lib as importlib
 # Process all database
 
 # Path to directories
-# wav_dir = r"..\Physionet_2016_training"
-# mat_dir = r"..\Physionet_2016_labels"
+wav_dir = r"..\Physionet_2016_training"
+mat_dir = r"..\Physionet_2016_labels"
 
 # Just A-folder
-wav_dir = r"..\Physionet_2016_training\training-a"
-mat_dir = r"..\Physionet_2016_labels\training-a-Aut"
+# wav_dir = r"..\Physionet_2016_training\training-a"
+# mat_dir = r"..\Physionet_2016_labels\training-a-Aut"
 
 
 # Collect and pair .wav and .mat Files
@@ -51,9 +51,9 @@ paired_files = [(patient_id, wav_dict[patient_id], mat_dict[patient_id])
 
 
 # Randomize the paired files
-# random.shuffle(paired_files)
+random.shuffle(paired_files)
 # Sort the paired files by patient ID
-paired_files.sort(key=lambda x: x[0])
+# paired_files.sort(key=lambda x: x[0])
 
 # Split the paired files into train, test, and validation sets
 train_split = int(0.8 * len(paired_files))
