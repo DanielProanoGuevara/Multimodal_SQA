@@ -1,8 +1,8 @@
+
 import os
 import glob
 import numpy as np
 import pandas as pd
-import random
 from sklearn.preprocessing import OneHotEncoder
 import preprocessing_lib as pplib
 import feature_extraction_lib as ftelib
@@ -51,9 +51,9 @@ paired_files = [(patient_id, wav_dict[patient_id], mat_dict[patient_id])
 
 
 # Randomize the paired files
-random.shuffle(paired_files)
+# random.shuffle(paired_files)
 # Sort the paired files by patient ID
-# paired_files.sort(key=lambda x: x[0])
+paired_files.sort(key=lambda x: x[0])
 
 # Split the paired files into train, test, and validation sets
 train_split = int(0.8 * len(paired_files))
@@ -102,7 +102,7 @@ def process_files(paired_files):
 
             # Butterworth bandpass filtering
             filtered_pcg = pplib.butterworth_filter(
-                despiked_signal, 'bandpass', 6, 1000, [25, 400])
+                despiked_signal, 'bandpass', 4, 1000, [25, 400])
 
             # Feature Extraction
             # Homomorphic Envelope

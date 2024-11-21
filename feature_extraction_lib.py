@@ -10,29 +10,43 @@ functions necessary for ECG and PCG signals. Also the training patches
 creation.
 
 @functions:
-- homomorphic_envelope(data, fs_inicial, fs_final, epsilon=0.01,
-                       median_window=51): Extracts the homomorphic envelope
-based on the AM modulation, where the envelope in the modulation signal, and
-the carrier is to be descarded. The signal s(t) is composed by the modulation
-signal e(t) and the carrier by c(t) by: s(t)=e(t)c(t). Its separation is
-acheived with the logarithmic law of multiplications.
+- homomorphic_envelope: Extracts the homomorphic envelope based on the AM
+modulation, where the envelope in the modulation signal, and the carrier is to
+be descarded. The signal s(t) is composed by the modulation signal e(t) and the
+carrier by c(t) by: s(t)=e(t)c(t). Its separation is acheived with the
+logarithmic law of multiplications.
 
-- c_wavelet_envelope(data, fs_inicial, fs_final, wv_family='morl',
-                       interest_frequencies=[50, 200]): Extracts the continuous
-wavelet transformation, rendering a scalogram in a specified frequency range,
-then these values are averaged. The methodology is inspired in the PSD of
-Spinger, 2016.
+- c_wavelet_envelope: Extracts the continuous wavelet transformation, rendering
+a scalogram in a specified frequency range, then these values are averaged. The
+methodology is inspired in the PSD of Spinger, 2016.
 
-- d_wavelet_envelope(data, fs_inicial, fs_final, wv_family='rbio3.9', level=3):
-Returns the specified level wavelet decimated decomposition, as the envelope.
+- d_wavelet_envelope: Returns the specified level wavelet decimated
+decomposition, as the envelope.
 
-- def hilbert_envelope(data, fs_inicial, fs_final): Computes the Hilbert
-transform, obtains the magnitude of the complex results, defining it as the
-envelope.
+- def hilbert_envelope: Computes the Hilbert transform, obtains the magnitude
+of the complex results, defining it as the envelope.
 
-- create_patches(Features, Labels, Patch_Size, Stride):
-Create the input vectors for Supervized training algorithms and the output
-validation one.
+- create_patches: Create the input vectors for Supervized training algorithms
+and the output validation one.
+
+- process_dataset: Use this function to preprocess your dataset by extracting
+features and labels, creating patches from them, and aggregating all patches
+into single arrays for training.
+
+- reconstruct_patches: After making predictions on patches, use this function
+to reconstruct the original sequence by combining the patches and averaging
+overlapping regions.
+
+- reconstruct_original_data: When dealing with multiple sequences
+(e.g.,multiple patients), this function helps reconstruct each original
+sequence from the patched data.
+
+- reverse_one_hot_encoding: Use this to convert one-hot encoded labels back to
+their original integer labels, especially when a specific label order was used
+during encoding.
+
+max_temporal_modelling: Apply this function to enforce temporal consistency in
+predicted sequences, ensuring that state transitions follow a defined order.
 
 
 @author: Daniel Proaño-Guevara.
@@ -231,3 +245,202 @@ def create_patches(Features, Labels, Patch_Size, Stride):
                                  :] if num_labels > 1 else Labels[start_idx:end_idx]
 
     return Features_Patch, Labels_Patch
+
+
+def process_dataset(data, patch_size, stride):
+    """
+    Process the dataset by extracting features and labels, creating patches, and aggregating them.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input data array where each row corresponds to a sample.
+        The features are expected to be in columns 1 to 4, and labels in column 5.
+    patch_size : int
+        The number of samples in each patch.
+    stride : int
+        The number of samples to skip between the starts of consecutive patches.
+
+    Returns
+    -------
+    all_features : numpy.ndarray
+        Concatenated array of all feature patches with shape (total_patches, patch_size, num_features).
+    all_labels : numpy.ndarray
+        Concatenated array of all label patches with shape (total_patches, patch_size).
+
+    Notes
+    -----
+    - This function iterates over each sample in the dataset, extracts the relevant features and labels,
+      and uses `create_patches` to generate patches from them.
+    - The patches from all samples are concatenated to form a single array of features and labels.
+    """
+    all_features = []
+    all_labels = []
+    for i in range(data.shape[0]):
+        features = np.stack(data[i, 1:5], axis=-1)
+        labels = data[i, 5]
+        features_patches, labels_patches = create_patches(
+            features, labels, patch_size, stride)
+        all_features.append(features_patches)
+        all_labels.append(labels_patches)
+    all_features = np.concatenate(all_features, axis=0)
+    all_labels = np.concatenate(all_labels, axis=0)
+    return all_features, all_labels
+
+
+def reconstruct_patches(predictions, original_length, patch_size, stride):
+    """
+    Reconstruct the original sequence from overlapping prediction patches.
+
+    Parameters
+    ----------
+    predictions : numpy.ndarray
+        Predicted patches with shape (num_features, patch_size, num_patches).
+    original_length : int
+        The length of the original sequence before it was patched.
+    patch_size : int
+        The number of samples in each patch.
+    stride : int
+        The number of samples to skip between the starts of consecutive patches.
+
+    Returns
+    -------
+    reconstructed : numpy.ndarray
+        The reconstructed sequence with shape (original_length, num_features).
+
+    Notes
+    -----
+    - This function reassembles the sequence by overlapping the prediction patches
+      and averaging the overlapping regions to smooth transitions.
+    - It handles cases where the patches do not perfectly align with the end of the sequence.
+    """
+    reconstructed = np.zeros((original_length, predictions.shape[0]))
+    overlap_count = np.zeros(original_length)
+    num_patches = predictions.shape[2]
+    for i in range(num_patches):
+        start_idx = i * stride
+        end_idx = min(start_idx + patch_size, original_length)
+        reconstructed[start_idx:end_idx] += predictions[:,
+                                                        :, i].T[:end_idx - start_idx]
+        overlap_count[start_idx:end_idx] += 1
+    reconstructed /= np.maximum(overlap_count[:, None], 1)
+    return reconstructed
+
+
+def reconstruct_original_data(patched_data, original_lengths, patch_size, stride):
+    """
+    Reconstruct original sequences from patched data for multiple samples.
+
+    Parameters
+    ----------
+    patched_data : numpy.ndarray
+        Array of patched data with shape (num_patches, patch_size, num_features).
+    original_lengths : list of int
+        List containing the original lengths of each sequence before patching.
+    patch_size : int
+        The number of samples in each patch.
+    stride : int
+        The number of samples to skip between the starts of consecutive patches.
+
+    Returns
+    -------
+    reconstructed_data : list of numpy.ndarray
+        List where each element is a reconstructed sequence corresponding to an original sample.
+
+    Notes
+    -----
+    - This function sequentially reconstructs each original sequence by overlapping its patches
+      and averaging the overlapping regions.
+    - It accounts for sequences of varying lengths and ensures that each is reconstructed accurately.
+    """
+    reconstructed_data = []
+    current_idx = 0
+
+    for original_length in original_lengths:
+        # Initialize arrays to hold the reconstructed sequence and overlap count
+        reconstructed = np.zeros((original_length, patched_data.shape[-1]))
+        overlap_count = np.zeros(original_length)
+
+        num_patches = int(
+            np.floor((original_length - patch_size) / stride)) + 1
+        adjusted_stride_samples = (
+            (original_length - patch_size) / (num_patches - 1)
+            if num_patches > 1 else stride
+        )
+        adjusted_stride_samples = int(round(adjusted_stride_samples))
+
+        # Iterate over patches and reconstruct the sequence
+        for i in range(num_patches):
+            start_idx = i * adjusted_stride_samples
+            end_idx = min(start_idx + patch_size, original_length)
+
+            reconstructed[start_idx:end_idx] += patched_data[current_idx,
+                                                             :end_idx - start_idx, :]
+            overlap_count[start_idx:end_idx] += 1
+
+            current_idx += 1
+
+        # Average the overlapping regions
+        reconstructed /= np.maximum(overlap_count[:, None], 1)
+        reconstructed_data.append(reconstructed)
+
+    return reconstructed_data
+
+
+def reverse_one_hot_encoding(one_hot_encoded_data, desired_order=[0, 1, 2, 3]):
+    """
+    Convert one-hot encoded data back to label indices based on a specified label order.
+
+    Parameters
+    ----------
+    one_hot_encoded_data : numpy.ndarray
+        One-hot encoded data of shape (num_samples, num_classes).
+    desired_order : list, optional
+        List representing the label indices corresponding to the one-hot encoding columns.
+        Default is [0, 1, 2, 3].
+
+    Returns
+    -------
+    labels : numpy.ndarray
+        Array of decoded labels with shape (num_samples,).
+
+    Notes
+    -----
+    - The function uses `np.argmax` to find the index of the maximum value in each row,
+      which corresponds to the class label.
+    - The `desired_order` parameter maps the indices back to the original labels if they were
+      encoded in a specific order.
+    """
+    label_indices = np.argmax(one_hot_encoded_data, axis=1)
+    labels = np.array([desired_order[idx] for idx in label_indices])
+    return labels
+
+
+def max_temporal_modelling(seq, num_states=4):
+    """
+    Enforce temporal consistency in a sequence by restricting invalid state transitions.
+
+    Parameters
+    ----------
+    seq : numpy.ndarray or list
+        Sequence of state labels (integers) to be processed.
+    num_states : int, optional
+        Total number of possible states in the sequence. Default is 4.
+
+    Returns
+    -------
+    seq : numpy.ndarray or list
+        The modified sequence with enforced temporal constraints.
+
+    Notes
+    -----
+    - The function modifies the sequence in-place to ensure that each state transition
+      is either to the same state or to the next state in a cyclical manner.
+    - If a state transition does not meet this condition, the state at time `t` is set
+      to the state at time `t-1`.
+    - This is useful for modeling processes where states should progress sequentially.
+    """
+    for t in range(1, len(seq)):
+        if seq[t] != seq[t - 1] and seq[t] != ((seq[t - 1] + 1) % num_states):
+            seq[t] = seq[t - 1]
+    return seq
