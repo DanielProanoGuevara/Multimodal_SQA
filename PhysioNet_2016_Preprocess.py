@@ -51,9 +51,9 @@ paired_files = [(patient_id, wav_dict[patient_id], mat_dict[patient_id])
 
 
 # Randomize the paired files
-# random.shuffle(paired_files)
+np.random.shuffle(paired_files)
 # Sort the paired files by patient ID
-paired_files.sort(key=lambda x: x[0])
+# paired_files.sort(key=lambda x: x[0])
 
 # Split the paired files into train, test, and validation sets
 train_split = int(0.8 * len(paired_files))
@@ -97,12 +97,12 @@ def process_files(paired_files):
             despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
 
             # wavelet denoising
-            # wavelet_denoised = pplib.wavelet_denoise(
-            #     despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[])
+            wavelet_denoised = pplib.wavelet_denoise(
+                despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[-1, 1, 2])
 
             # Butterworth bandpass filtering
             filtered_pcg = pplib.butterworth_filter(
-                despiked_signal, 'bandpass', 4, 1000, [25, 400])
+                wavelet_denoised, 'bandpass', 4, 1000, [15, 450])
 
             # Feature Extraction
             # Homomorphic Envelope
