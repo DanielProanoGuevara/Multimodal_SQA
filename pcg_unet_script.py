@@ -36,7 +36,7 @@ import copy
 # U-NET architecture
 
 
-def unet_pcg(nch, patch_size, dropout=0.0):
+def unet_pcg(nch, patch_size, dropout=0.05):
     inputs = tf.keras.layers.Input(shape=(patch_size, nch))
     conv1 = tf.keras.layers.Conv1D(
         8, 3, activation='relu', padding='same')(inputs)
@@ -119,8 +119,8 @@ def unet_pcg(nch, patch_size, dropout=0.0):
 
 # %% Import Files
 # Load the train and validation datasets
-train_df = pd.read_pickle('../train_physionet_2016.pkl')
-val_df = pd.read_pickle('../validation_physionet_2016.pkl')
+train_df = pd.read_pickle('../train_physionet_2016_butter.pkl')
+val_df = pd.read_pickle('../validation_physionet_2016_butter.pkl')
 
 # Convert the loaded DataFrames to numpy arrays
 train_data = train_df[['Patient ID', 'Homomorphic',
@@ -141,7 +141,7 @@ val_features, val_labels = ftelib.process_dataset(val_data, patch_size, stride)
 
 # %% Neural Network model
 
-checkpoint_path = '../pcg_unet_weights/checkpoint.keras'
+checkpoint_path = '../pcg_unet_weights/checkpoint_butter.keras'
 
 EPOCHS = 15
 learning_rate = 1e-4
