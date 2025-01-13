@@ -162,8 +162,8 @@ def saveAudio(data, rate, name):
 
 
 # Declare files path
-PCG_path = r"../DatasetCHVNGE/23_PV.mp3"
-ECG_path = r"../DatasetCHVNGE/23_PV.raw"
+PCG_path = r"../DatasetCHVNGE/98_AV.mp3"
+ECG_path = r"../DatasetCHVNGE/98_AV.raw"
 
 # Import PCG
 a = pydub.AudioSegment.from_mp3(PCG_path)
