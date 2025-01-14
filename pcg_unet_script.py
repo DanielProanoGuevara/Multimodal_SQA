@@ -119,14 +119,17 @@ def unet_pcg(nch, patch_size, dropout=0.05):
 
 # %% Import Files
 # Load the train and validation datasets
-train_df = pd.read_pickle('../train_physionet_2016_butter.pkl')
-val_df = pd.read_pickle('../validation_physionet_2016_butter.pkl')
+val_df = pd.read_pickle(r'..\features_signals_wv.pkl')
+
+val_df['Homomorphic'] = val_df['Features'].apply(lambda x: x[:, 0])
+val_df['CWT_Morl'] = val_df['Features'].apply(lambda x: x[:, 1])
+val_df['CWT_Mexh'] = val_df['Features'].apply(lambda x: x[:, 2])
+val_df['Hilbert_Env'] = val_df['Features'].apply(lambda x: x[:, 3])
+val_df = val_df.drop(columns=['Features'])
 
 # Convert the loaded DataFrames to numpy arrays
-train_data = train_df[['Patient ID', 'Homomorphic',
-                       'CWT_Morl', 'CWT_Mexh', 'Hilbert_Env', 'Labels']].to_numpy()
-val_data = val_df[['Patient ID', 'Homomorphic', 'CWT_Morl',
-                   'CWT_Mexh', 'Hilbert_Env', 'Labels']].to_numpy()
+val_data = val_df[['ID', 'Homomorphic', 'CWT_Morl',
+                   'CWT_Mexh', 'Hilbert_Env']].to_numpy()
 
 # Feature creation
 BATCH_SIZE = 4
@@ -135,13 +138,11 @@ nch = 4
 stride = 8
 
 # Create patches and structures for NN training
-train_features, train_labels = ftelib.process_dataset(
-    train_data, patch_size, stride)
-val_features, val_labels = ftelib.process_dataset(val_data, patch_size, stride)
+val_features = ftelib.process_dataset_no_labels(val_data, patch_size, stride)
 
 # %% Neural Network model
 
-checkpoint_path = '../pcg_unet_weights/checkpoint_butter.keras'
+checkpoint_path = '../pcg_unet_weights/checkpoint_wv.keras'
 
 EPOCHS = 15
 learning_rate = 1e-4
@@ -150,21 +151,9 @@ model.compile(optimizer=Adam(learning_rate=learning_rate), loss='categorical_cro
               metrics=['CategoricalAccuracy', 'Precision', 'Recall'])
 
 
-# %% Train NN if wanted
-
-model_checkpoint = ModelCheckpoint(
-    filepath=checkpoint_path, monitor='val_loss', save_best_only=True)
-history = model.fit(train_features, train_labels,
-                    validation_data=(val_features, val_labels),
-                    epochs=EPOCHS,
-                    batch_size=BATCH_SIZE,
-                    verbose=1,
-                    shuffle=True, callbacks=[model_checkpoint])
-
 # %% Inference pipeline
 
 model.load_weights(checkpoint_path)
-predictions_train = model.predict(train_features)
 val_test = model.predict(val_features)
 
 # Reconstruct from patches
@@ -174,13 +163,9 @@ original_lengths = [len(seq) for seq in val_data[:, 1]]
 reconstructed_labels = ftelib.reconstruct_original_data(
     val_test, original_lengths, patch_size, stride)
 
-# %% Reverse one-hot encoding
+# %% Save Probabilities
 
-pred_labels = [ftelib.reverse_one_hot_encoding(
-    pred) for pred in reconstructed_labels]
+predictions_pickle_path = r'..\ULSGE_pred_wv.pkl'
 
-ground_truth = [ftelib.reverse_one_hot_encoding(
-    pred) for pred in val_data[:, 5]]
-
-predictions = np.array([ftelib.max_temporal_modelling(prediction)
-                       for prediction in pred_labels], dtype=object)
+with open(predictions_pickle_path, 'wb') as file:
+    pickle.dump(reconstructed_labels, file)

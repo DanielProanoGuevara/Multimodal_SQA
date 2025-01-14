@@ -247,6 +247,51 @@ def create_patches(Features, Labels, Patch_Size, Stride):
     return Features_Patch, Labels_Patch
 
 
+def create_patches_no_labels(Features, Patch_Size, Stride):
+    """
+    Create overlapping patches from Features for ANN training.
+
+    Parameters
+    ----------
+    Features : numpy.ndarray
+        Input feature matrix of size (Total_Samples, Num_Features).
+    Patch_Size : int
+        The number of samples for each patch.
+    Stride : int
+        The number of samples to stride between patches.
+
+    Raises
+    ------
+    ValueError
+        Checks input errors.
+
+    Returns
+    -------
+    Features_Patch : numpy.ndarray
+        Patches of features of size (Num_Patches, Patch_Size, Num_Features).
+
+    """
+    total_samples = Features.shape[0]
+    num_features = Features.shape[1]
+
+    num_patches = int(np.floor((total_samples - Patch_Size) / Stride)) + 1
+    adjusted_stride_samples = (
+        total_samples - Patch_Size) / (num_patches - 1) if num_patches > 1 else Stride
+    adjusted_stride_samples = int(round(adjusted_stride_samples))
+
+    Features_Patch = np.zeros((num_patches, Patch_Size, num_features))
+
+    for i in range(num_patches):
+        start_idx = i * adjusted_stride_samples
+        end_idx = start_idx + Patch_Size
+        if end_idx > total_samples:
+            start_idx = total_samples - Patch_Size
+            end_idx = total_samples
+        Features_Patch[i] = Features[start_idx:end_idx, :]
+
+    return Features_Patch
+
+
 def process_dataset(data, patch_size, stride):
     """
     Process the dataset by extracting features and labels, creating patches, and aggregating them.
@@ -286,6 +331,43 @@ def process_dataset(data, patch_size, stride):
     all_features = np.concatenate(all_features, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
     return all_features, all_labels
+
+
+def process_dataset_no_labels(data, patch_size, stride):
+    """
+    Process the dataset by extracting features, creating patches, and aggregating them.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Input data array where each row corresponds to a sample.
+        The features are expected to be in columns 1 to 4.
+    patch_size : int
+        The number of samples in each patch.
+    stride : int
+        The number of samples to skip between the starts of consecutive patches.
+
+    Returns
+    -------
+    all_features : numpy.ndarray
+        Concatenated array of all feature patches with shape (total_patches, patch_size, num_features).
+
+    Notes
+    -----
+    - This function iterates over each sample in the dataset, extracts the relevant features,
+      and uses `create_patches_no_labels` to generate patches from them.
+    - The patches from all samples are concatenated to form a single array of features.
+    """
+    all_features = []
+
+    for i in range(data.shape[0]):
+        features = np.stack(data[i, 1:5], axis=-1)
+        features_patches = create_patches_no_labels(
+            features, patch_size, stride)
+        all_features.append(features_patches)
+
+    all_features = np.concatenate(all_features, axis=0)
+    return all_features
 
 
 def reconstruct_patches(predictions, original_length, patch_size, stride):
