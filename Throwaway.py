@@ -13,6 +13,7 @@ import glob
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 from scipy.stats import norm
 import pywt
 import pydub
@@ -24,26 +25,95 @@ import preprocessing_lib as pplib
 import feature_extraction_lib as ftelib
 import file_process_lib as importlib
 
-# import os
-
 # import librosa
 # import logging
-# import numpy as np
-# import pandas as pd
 import scipy.io
 # import scipy.signal
 # import re
 
-# import pickle
+import pickle
 
 from scipy.io import wavfile
-# import tensorflow as tf
-# # from tqdm import tqdm
-# import matplotlib.pyplot as plt
 
 
 import copy
 
+# %% ULSGE Dataset results
+# Import Original
+# root_dir = r'..\DatasetCHVNGE\pcg_processed.pkl'
+# df = pd.read_pickle(root_dir)
+# # Drop empty columns
+# df = df.drop(index=[491, 503])
+# df = df.reset_index(drop=True)
+# # Resample them to 50 Hz
+# # Optimize the processing of the dataset
+# df['Processed Signal'] = df['Processed Signal'].apply(
+#     lambda data: pplib.downsample(data, 1000, 50))
+
+# # Import Predictions
+# pred_path = r'..\ULSGE_pred_wv.pkl'
+# with open(pred_path, 'rb') as file:
+#     predictions = pickle.load(file)
+
+# # Create main figure
+# fig = plt.figure(layout='constrained', figsize=(7, 8))
+# fig.suptitle('ULSGE Segmentation Results - Wavelet Only')
+
+# subfigs = fig.subfigures(3, 1, hspace=0)
+
+# top = subfigs[0].subplots(2, 1, sharex=True, sharey=True)
+# subfigs[0].suptitle('Signal Quality 5')
+# top[0].plot(pplib.min_max_norm2(df.iloc[620][2])[380:800])
+# top[0].plot(predictions[620][380:800, 0], label='S1')
+# top[0].set_xticks([])
+# top[0].set_ylim(-1, 1)
+# top[0].legend(loc=3)
+# top[0].grid()
+
+# top[1].plot(pplib.min_max_norm2(df.iloc[620][2])[380:800])
+# top[1].plot(predictions[620][380:800, 2], label='S2')
+# top[1].set_xticks([])
+# top[1].set_ylim(-1, 1)
+# top[1].legend(loc=3)
+# top[1].grid()
+
+
+# mid = subfigs[1].subplots(2, 1, sharex=True, sharey=True)
+# subfigs[1].suptitle('Signal Quality 4')
+# mid[0].plot(pplib.min_max_norm2(df.iloc[608][2])[380:800])
+# mid[0].plot(predictions[608][380:800, 0], label='S1')
+# mid[0].set_xticks([])
+# mid[0].set_ylim(-1, 1)
+# mid[0].legend(loc=3)
+# mid[0].grid()
+
+# mid[1].plot(pplib.min_max_norm2(df.iloc[608][2])[380:800])
+# mid[1].plot(predictions[608][380:800, 2], label='S2')
+# mid[1].set_xticks([])
+# mid[1].set_ylim(-1, 1)
+# mid[1].legend(loc=3)
+# mid[1].grid()
+
+
+# bot = subfigs[2].subplots(2, 1, sharex=True, sharey=True)
+# subfigs[2].suptitle('Signal Quality 3')
+# bot[0].plot(pplib.min_max_norm2(df.iloc[601][2])[380:800])
+# bot[0].plot(predictions[601][380:800, 0], label='S1')
+# bot[0].set_xticks([])
+# bot[0].set_ylim(-1, 1)
+# bot[0].legend(loc=3)
+# bot[0].grid()
+
+# bot[1].plot(pplib.min_max_norm2(df.iloc[601][2])[380:800])
+# bot[1].plot(predictions[601][380:800, 2], label='S2')
+# bot[1].set_xticks([])
+# bot[1].set_ylim(-1, 1)
+# bot[1].legend(loc=3)
+# bot[1].grid()
+
+
+# # plt.tight_layout()
+# plt.show()
 # %%
 
 # pcg_dir = r"..\DatasetCHVNGE\5_AV.mp3"
@@ -189,25 +259,37 @@ import copy
 # %% Denoising
 # Import and analyze the dataset
 
-# directory = r'../LUDB/data/2'
+directory = r'../LUDB/data/1'
 
-# # Read as record
-# record = wfdb.rdrecord(directory)
-# wfdb.plot_wfdb(record=record, title="Record 1 from LUDB")
+# Read as record
+record = wfdb.rdrecord(directory)
 
-# # Read only signals
+# Read only signals
 # signals, fields = wfdb.rdsamp(directory, channels=[1, 3, 5, 6])
+signals, _ = wfdb.rdsamp(directory)  # <--
 
-# # Read annotations
-# ann = wfdb.rdann(directory, extension="i")
-# wfdb.plot_wfdb(annotation=ann)
+# Read annotations
+ann = wfdb.rdann(directory, extension="i")
 
-# # Plot annotations on top of signal
-# wfdb.plot_wfdb(record=record, annotation=ann,
-#                title="I lead annotated (not differentiated)")
+# indices where the annotation is applied
+annotation_index_i = ann.sample
 
-# # indices where the annotation is applied
-# annotation_index = ann.sample
+# symbol order of the annotations
+annotation_vector_i = ann.symbol
 
-# # symbol order of the annotations
-# annotation_vector = ann.symbol
+
+ann = wfdb.rdann(directory, extension="ii")
+
+# indices where the annotation is applied
+annotation_index_ii = ann.sample
+
+# symbol order of the annotations
+annotation_vector_ii = ann.symbol
+
+ann = wfdb.rdann(directory, extension="iii")
+
+# indices where the annotation is applied
+annotation_index_iii = ann.sample
+
+# symbol order of the annotations
+annotation_vector_iii = ann.symbol

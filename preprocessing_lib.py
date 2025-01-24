@@ -416,3 +416,46 @@ def min_max_norm(data):
 
 def min_max_norm2(data):
     return (2*(data - np.min(data))/(np.max(data)-np.min(data)))-1
+
+
+def moving_average(x, window_size):
+    """
+    Perform a zero-phase moving average (back-and-forth filtering) with mirrored padding.
+
+    Parameters:
+    ----------
+    x : numpy.ndarray
+        Input 1D array to be filtered.
+    window_size : int
+        The size of the moving average window (must be a positive odd integer).
+
+    Returns:
+    -------
+    filtered : numpy.ndarray
+        Zero-phase moving average filtered array, same size as input.
+    """
+    # Ensure the window size is a positive odd integer
+    if window_size % 2 == 0 or window_size < 1:
+        window_size = window_size + 1
+
+    # Define the moving average window
+    window = np.ones(window_size) / window_size
+
+    # Pad the array by mirroring at both ends
+    pad_size = window_size - 1
+    x_padded = np.pad(x, pad_size, mode='edge')
+
+    # Forward pass: Convolve with the moving average window
+    forward_pass = np.convolve(x_padded, window, mode='valid')
+
+    # Reverse the forward pass result
+    forward_pass_reversed = forward_pass[::-1]
+
+    # Backward pass: Convolve again with the moving average window
+    backward_pass = np.convolve(forward_pass_reversed, window, mode='valid')
+
+    # Reverse the backward pass result to restore original order
+    filtered = backward_pass[::-1]
+
+    # Return the cropped result
+    return filtered
