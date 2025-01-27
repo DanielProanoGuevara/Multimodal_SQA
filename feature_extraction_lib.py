@@ -196,6 +196,43 @@ def hilbert_envelope(data, fs_inicial, fs_final):
     return min_max_norm(downsample(envelope, fs_inicial, fs_final))
 
 
+def shannon_envelopenergy(signal, fs_inicial, fs_final):
+    """
+    Compute the Shannon Energy Envelope of a signal.
+
+    This function calculates the Shannon Energy Envelope of a given signal by:
+    1. Computing the squared energy of the signal.
+    2. Applying the Shannon entropy formula to the energy.
+    3. Downsampling the resulting envelope from the initial sampling frequency (`fs_inicial`) 
+       to the desired final sampling frequency (`fs_final`).
+    4. Normalizing the downsampled envelope using min-max normalization.
+
+    Parameters:
+    ----------
+    signal : numpy.ndarray
+        The input signal to process.
+    fs_inicial : int or float
+        The initial sampling frequency of the signal.
+    fs_final : int or float
+        The desired final sampling frequency for the envelope.
+
+    Returns:
+    -------
+    numpy.ndarray
+        The normalized, downsampled Shannon Energy Envelope of the input signal.
+
+    Notes:
+    ------
+    - A small constant (`epsilon`) is added to prevent the logarithm of zero.
+    - The envelope is normalized to the range [0, 1] using min-max normalization.
+    """
+    epsilon = 0.0001
+    energy = signal ** 2
+    envelope = -energy * np.log(energy + epsilon)
+
+    return min_max_norm(downsample(envelope, fs_inicial, fs_final))
+
+
 def create_patches(Features, Labels, Patch_Size, Stride):
     """
     Create overlapping patches from Features and Labels for ANN training.

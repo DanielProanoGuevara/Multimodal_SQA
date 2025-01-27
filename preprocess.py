@@ -138,7 +138,7 @@ def bandPassButterworth(data, a, b, rate, decimate=1):
 
 
 def shannonEnergy(signal):
-    epsilon = 1e-10  # Small constant to prevent log(0)
+    epsilon = 0.0001  # Small constant to prevent log(0)
     energy = -signal**2 * np.log(signal**2 + epsilon)
     return energy
 
