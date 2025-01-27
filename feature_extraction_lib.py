@@ -233,6 +233,65 @@ def shannon_envelopenergy(signal, fs_inicial, fs_final):
     return min_max_norm(downsample(envelope, fs_inicial, fs_final))
 
 
+def hamming_smooth_envelope(x, window_size, fs_inicial, fs_final):
+    """
+    Compute the smoothed envelope of a signal using a Hamming window.
+
+    This function smooths the input signal by applying a double-pass convolution
+    with a Hamming window. The process involves:
+    1. A forward pass: Convolution of the padded signal with the Hamming window.
+    2. A backward pass: Convolution of the reversed forward pass result with the same Hamming window.
+    3. Normalization and downsampling of the resulting envelope.
+
+    Parameters:
+    ----------
+    x : numpy.ndarray
+        The input signal to process.
+    window_size : int
+        The size of the Hamming window. Must be a positive odd integer. If not, it will be adjusted.
+    fs_inicial : int or float
+        The initial sampling frequency of the signal.
+    fs_final : int or float
+        The desired final sampling frequency for the envelope.
+
+    Returns:
+    -------
+    numpy.ndarray
+        The normalized, downsampled smoothed envelope of the input signal.
+
+    Notes:
+    ------
+    - The signal is padded at both ends using edge values to minimize boundary effects during convolution.
+    - A double-pass smoothing approach ensures a symmetrical response.
+    - The resulting envelope is normalized to the range [0, 1] using min-max normalization.
+
+    """
+    # Ensure the window size is a positive odd integer
+    if window_size % 2 == 0 or window_size < 1:
+        window_size = window_size + 1
+
+    # Define the smoothing window
+    window = np.hamming(window_size)
+
+    # Pad the array by mirroring at both ends
+    pad_size = window_size - 1
+    x_padded = np.pad(x, pad_size, mode='edge')
+
+    # Forward pass: Convolve with the moving average window
+    forward_pass = np.convolve(x_padded, window, mode='valid')
+
+    # Reverse the forward pass result
+    forward_pass_reversed = forward_pass[::-1]
+
+    # Backward pass: Convolve again with the moving average window
+    backward_pass = np.convolve(forward_pass_reversed, window, mode='valid')
+
+    # Reverse the backward pass result to restore original order
+    envelope = backward_pass[::-1]
+
+    return min_max_norm(downsample(envelope, fs_inicial, fs_final))
+
+
 def create_patches(Features, Labels, Patch_Size, Stride):
     """
     Create overlapping patches from Features and Labels for ANN training.
