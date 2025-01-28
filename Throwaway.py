@@ -257,37 +257,123 @@ import copy
 # %% Denoising
 # Import and analyze the dataset
 
-directory = r'../LUDB/data/1'
+# directory = r'../LUDB/data/1'
 
-# Read as record
-record = wfdb.rdrecord(directory)
+# # Read as record
+# record = wfdb.rdrecord(directory)
 
-# Read only signals
-# signals, fields = wfdb.rdsamp(directory, channels=[1, 3, 5, 6])
-signals, _ = wfdb.rdsamp(directory)  # <--
+# # Read only signals
+# # signals, fields = wfdb.rdsamp(directory, channels=[1, 3, 5, 6])
+# signals, _ = wfdb.rdsamp(directory)  # <--
 
-# Read annotations
-ann = wfdb.rdann(directory, extension="i")
+# # Read annotations
+# ann = wfdb.rdann(directory, extension="i")
 
-# indices where the annotation is applied
-annotation_index_i = ann.sample
+# # indices where the annotation is applied
+# annotation_index_i = ann.sample
 
-# symbol order of the annotations
-annotation_vector_i = ann.symbol
+# # symbol order of the annotations
+# annotation_vector_i = ann.symbol
 
 
-ann = wfdb.rdann(directory, extension="ii")
+# ann = wfdb.rdann(directory, extension="ii")
 
-# indices where the annotation is applied
-annotation_index_ii = ann.sample
+# # indices where the annotation is applied
+# annotation_index_ii = ann.sample
 
-# symbol order of the annotations
-annotation_vector_ii = ann.symbol
+# # symbol order of the annotations
+# annotation_vector_ii = ann.symbol
 
-ann = wfdb.rdann(directory, extension="iii")
+# ann = wfdb.rdann(directory, extension="iii")
 
-# indices where the annotation is applied
-annotation_index_iii = ann.sample
+# # indices where the annotation is applied
+# annotation_index_iii = ann.sample
 
-# symbol order of the annotations
-annotation_vector_iii = ann.symbol
+# # symbol order of the annotations
+# annotation_vector_iii = ann.symbol
+
+# %% Process full LUDB dataset
+
+ludb_df = pd.read_pickle(r'..\LUDB\ludb_full.pkl')
+
+# Processing pipeline
+ecg_raw = ludb_df.signal[14]
+
+# ECG_path = r"../DatasetCHVNGE/5_TV.raw"
+# ECG = np.loadtxt(ECG_path, delimiter=",", dtype=int)
+# ECG_bit_width = 12
+# ECG_resolution = (2 ** ECG_bit_width)-1
+# ecg_raw = ECG / ECG_resolution
+
+fs = 500  # 500 sps original frequency
+
+# Standardization
+ecg_zscore = pplib.z_score_standardization(ecg_raw)
+
+# Highpass filter. Butterworth 0.5Hz
+ecg_filtered1 = pplib.butterworth_filter(ecg_zscore, 'highpass', 2, fs, 0.5)
+
+# Lowpass filter. Butterworth 150 Hz
+ecg_filtered2 = pplib.butterworth_filter(ecg_filtered1, 'lowpass', 6, fs, 100)
+
+# Notch filter. Remove 50 Hz band
+b_notch, a_notch = signal.iirnotch(55, Q=30, fs=fs)
+notched_separated = signal.filtfilt(b_notch, a_notch, ecg_filtered2)
+
+notched_separated -= np.median(notched_separated)
+
+
+# Bandpass filter directly
+ecg_filter_bp = pplib.butterworth_filter(
+    ecg_zscore, 'bandpass', 6, fs, [0.5, 100])
+notched_bandpass = signal.filtfilt(b_notch, a_notch, ecg_filter_bp)
+notched_bandpass -= np.median(notched_bandpass)
+
+
+plt.figure()
+plt.title('Pre-processing')
+plt.plot(ecg_zscore, label='standardized ecg')
+plt.plot(notched_separated, label='notched separated ecg')
+plt.plot(notched_bandpass, label='notched bandpass ecg')
+plt.grid()
+plt.legend()
+plt.show()
+
+# %% features separated filters
+hilbert_sep = ftelib.hilbert_envelope(notched_separated, fs, 50)
+shannon_sep = ftelib.shannon_envelopenergy(notched_separated, fs, 50)
+homomorphic_sep = ftelib.homomorphic_envelope(
+    notched_separated, fs, 50, median_window=21)
+hamming_sep = ftelib.hamming_smooth_envelope(notched_separated, 21, fs, 50)
+
+
+plt.figure()
+plt.title('Features from separated filters')
+plt.plot(hilbert_sep, label='hilbert envelope')
+plt.plot(shannon_sep, label='shannon envelope')
+plt.plot(homomorphic_sep, label='homomorphic envelope')
+plt.plot(hamming_sep, label='smooth energy')
+
+plt.grid()
+plt.legend()
+plt.show()
+
+# %% features bandpass filter
+
+hilbert_bp = ftelib.hilbert_envelope(notched_bandpass, fs, 50)
+shannon_bp = ftelib.shannon_envelopenergy(notched_bandpass, fs, 50)
+homomorphic_bp = ftelib.homomorphic_envelope(
+    notched_bandpass, fs, 50, median_window=21)
+hamming_bp = ftelib.hamming_smooth_envelope(notched_bandpass, 21, fs, 50)
+
+
+plt.figure()
+plt.title('Features from bandpass filters')
+plt.plot(hilbert_bp, label='hilbert envelope')
+plt.plot(shannon_bp, label='shannon envelope')
+plt.plot(homomorphic_bp, label='homomorphic envelope')
+plt.plot(hamming_bp, label='smooth energy')
+
+plt.grid()
+plt.legend()
+plt.show()

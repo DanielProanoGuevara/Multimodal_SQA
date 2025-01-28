@@ -89,7 +89,7 @@ def homomorphic_envelope(data, fs_inicial, fs_final, epsilon=0.01,
 
     """
     # energy_signal = data**2
-    energy_signal = abs(data)
+    energy_signal = np.abs(data)
     energy = np.where(energy_signal == 0, epsilon, energy_signal)
     g = np.log(energy)
     envelope_log = signal.medfilt(g, median_window)
@@ -227,13 +227,14 @@ def shannon_envelopenergy(signal, fs_inicial, fs_final):
     - The envelope is normalized to the range [0, 1] using min-max normalization.
     """
     epsilon = 0.0001
-    energy = signal ** 2
+    # energy = signal ** 2
+    energy = np.abs(signal)
     envelope = -energy * np.log(energy + epsilon)
 
     return min_max_norm(downsample(envelope, fs_inicial, fs_final))
 
 
-def hamming_smooth_envelope(x, window_size, fs_inicial, fs_final):
+def hamming_smooth_envelope(signal, window_size, fs_inicial, fs_final):
     """
     Compute the smoothed envelope of a signal using a Hamming window.
 
@@ -245,7 +246,7 @@ def hamming_smooth_envelope(x, window_size, fs_inicial, fs_final):
 
     Parameters:
     ----------
-    x : numpy.ndarray
+    signal : numpy.ndarray
         The input signal to process.
     window_size : int
         The size of the Hamming window. Must be a positive odd integer. If not, it will be adjusted.
@@ -272,6 +273,9 @@ def hamming_smooth_envelope(x, window_size, fs_inicial, fs_final):
 
     # Define the smoothing window
     window = np.hamming(window_size)
+
+    # Signal Energy
+    x = np.abs(signal)
 
     # Pad the array by mirroring at both ends
     pad_size = window_size - 1
