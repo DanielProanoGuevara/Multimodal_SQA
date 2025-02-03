@@ -227,9 +227,9 @@ def shannon_envelopenergy(signal, fs_inicial, fs_final):
     - The envelope is normalized to the range [0, 1] using min-max normalization.
     """
     epsilon = 0.0001
-    # energy = signal ** 2
-    energy = np.abs(signal)
-    envelope = -energy * np.log(energy + epsilon)
+    energy = signal ** 2
+    # energy = np.abs(signal)
+    envelope = np.abs(-energy * np.log(energy + epsilon))
 
     return min_max_norm(downsample(envelope, fs_inicial, fs_final))
 
