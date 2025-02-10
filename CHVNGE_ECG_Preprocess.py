@@ -1,16 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Oct 23 12:32:40 2024
+Created on Mon Feb 10 16:33:03 2025
 
 @author: danie
 """
+
+
 # Libraries import
 import os
 import glob
 import numpy as np
 import pandas as pd
+from scipy import signal
 import preprocessing_lib as pplib
 import feature_extraction_lib as ftelib
+
+FS = 500  # 500 sps original frequency
+
+# Notch filter. Remove 50 Hz band
+B, A = signal.iirnotch(50, Q=30, fs=FS)
 
 
 def process_signals_from_pkl(file_path):
@@ -23,6 +31,9 @@ def process_signals_from_pkl(file_path):
     Returns:
         pd.DataFrame: DataFrame with extracted features for each processed signal.
     """
+    # Globals
+    global FS, B, A
+
     # Load the DataFrame from the pickle file
     df = pd.read_pickle(file_path)
 
@@ -32,43 +43,32 @@ def process_signals_from_pkl(file_path):
         try:
             data = row['Signal']
 
-            # Frequency downsampling
-            data_ds = pplib.downsample(data, 3000, 1000)
-
-            # Schmidt despiking
-            despiked_signal = pplib.schmidt_spike_removal(data_ds, 1000)
-
-            # Wavelet denoising
-            # wavelet_denoised = pplib.wavelet_denoise(
-            #     despiked_signal, 5, wavelet_family='coif4',
-            #     risk_estimator=pplib.val_SURE_threshold,
-            #     shutdown_bands=[-1, 1, 2]
-            # )
-
             # Butterworth bandpass filtering
-            filtered_pcg = pplib.butterworth_filter(
-                despiked_signal, 'bandpass', 4, 1000, [15, 450])
+            ecg_bandpass = pplib.butterworth_filter(
+                data, 'bandpass', order=6, fs=FS, fc=[0.5, 100])
+
+            # Notch. Remove 50 Hz
+            ecg_notch = signal.filtfilt(B, A, ecg_bandpass)
+            # Detrend
+            ecg_notch -= np.median(ecg_notch)
 
             # Feature extraction
-            # Homomorphic Envelope
-            homomorphic = ftelib.homomorphic_envelope(filtered_pcg, 1000, 50)
-
-            # CWT Scalogram Envelope
-            cwt_morl = ftelib.c_wavelet_envelope(
-                filtered_pcg, 1000, 50, interest_frequencies=[40, 200]
-            )
-
-            cwt_mexh = ftelib.c_wavelet_envelope(
-                filtered_pcg, 1000, 50, wv_family='mexh',
-                interest_frequencies=[40, 200]
-            )
-
             # Hilbert Envelope
-            hilbert_env = ftelib.hilbert_envelope(filtered_pcg, 1000, 50)
+            hilbert_env = ftelib.hilbert_envelope(
+                ecg_notch, fs_inicial=FS, fs_final=50)
+            # Shannon Envelope
+            shannon_env = ftelib.shannon_envelopenergy(
+                ecg_notch, fs_inicial=FS, fs_final=50)
+            # Homomorphic Envelope
+            homomorphic_env = ftelib.homomorphic_envelope(
+                ecg_notch, median_window=21, fs_inicial=FS, fs_final=50)
+            # Smoothing Envelope
+            hamming_env = ftelib.hamming_smooth_envelope(
+                ecg_notch, window_size=21, fs_inicial=FS, fs_final=50)
 
             # Organize and stack features
             features = np.column_stack((
-                homomorphic, cwt_morl, cwt_mexh, hilbert_env
+                hilbert_env, shannon_env, homomorphic_env, hamming_env
             ))
 
             # Append features to the list
@@ -86,8 +86,8 @@ def process_signals_from_pkl(file_path):
 
 
 # Directory containing the files
-root_dir = r'..\DatasetCHVNGE\pcg_ulsge.pkl'
+root_dir = r'..\DatasetCHVNGE\ecg_ulsge.pkl'
 features_df = process_signals_from_pkl(root_dir)
 
 # Save or inspect the resulting DataFrame
-features_df.to_pickle(r'..\ulsge_pcg_features.pkl')
+features_df.to_pickle(r'..\ulsge_ecg_features.pkl')
