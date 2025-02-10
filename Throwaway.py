@@ -255,50 +255,13 @@ import copy
 # ax.legend()
 # fig.tight_layout()
 
-# %% Denoising
-# Import and analyze the dataset
-
-# directory = r'../LUDB/data/1'
-
-# # Read as record
-# record = wfdb.rdrecord(directory)
-
-# # Read only signals
-# # signals, fields = wfdb.rdsamp(directory, channels=[1, 3, 5, 6])
-# signals, _ = wfdb.rdsamp(directory)  # <--
-
-# # Read annotations
-# ann = wfdb.rdann(directory, extension="i")
-
-# # indices where the annotation is applied
-# annotation_index_i = ann.sample
-
-# # symbol order of the annotations
-# annotation_vector_i = ann.symbol
-
-
-# ann = wfdb.rdann(directory, extension="ii")
-
-# # indices where the annotation is applied
-# annotation_index_ii = ann.sample
-
-# # symbol order of the annotations
-# annotation_vector_ii = ann.symbol
-
-# ann = wfdb.rdann(directory, extension="iii")
-
-# # indices where the annotation is applied
-# annotation_index_iii = ann.sample
-
-# # symbol order of the annotations
-# annotation_vector_iii = ann.symbol
 
 # %% Process full LUDB dataset
 
-ludb_df = pd.read_pickle(r'..\LUDB\ludb_full.pkl')
+# ludb_df = pd.read_pickle(r'..\LUDB\ludb_full.pkl')
 
-# Processing pipeline
-ecg_raw = ludb_df.signal[14]
+# # Processing pipeline
+# ecg_raw = ludb_df.signal[14]
 
 # ECG_path = r"../DatasetCHVNGE/5_TV.raw"
 # ECG = np.loadtxt(ECG_path, delimiter=",", dtype=int)
@@ -306,69 +269,73 @@ ecg_raw = ludb_df.signal[14]
 # ECG_resolution = (2 ** ECG_bit_width)-1
 # ecg_raw = ECG / ECG_resolution
 
-fs = 500  # 500 sps original frequency
+# fs = 500  # 500 sps original frequency
 
-# Standardization
-ecg_zscore = pplib.z_score_standardization(ecg_raw)
+# # Standardization
+# ecg_zscore = pplib.z_score_standardization(ecg_raw)
 
-# Bandpass filter directly
-ecg_filter_bp = pplib.butterworth_filter(
-    ecg_zscore, 'bandpass', 6, fs, [0.5, 100])
+# # Bandpass filter directly
+# ecg_filter_bp = pplib.butterworth_filter(
+#     ecg_zscore, 'bandpass', 6, fs, [0.5, 100])
 
-# Notch filter. Remove 50 Hz band
-b_notch, a_notch = signal.iirnotch(50, Q=30, fs=fs)
+# # Notch filter. Remove 50 Hz band
+# b_notch, a_notch = signal.iirnotch(50, Q=30, fs=fs)
 
-notched_bandpass = signal.filtfilt(b_notch, a_notch, ecg_filter_bp)
-notched_bandpass -= np.median(notched_bandpass)
+# notched_bandpass = signal.filtfilt(b_notch, a_notch, ecg_filter_bp)
+# notched_bandpass -= np.median(notched_bandpass)
 
 
-plt.figure()
-plt.title('Pre-processing')
-plt.plot(ecg_zscore, label='standardized ecg')
-plt.plot(notched_bandpass, label='notched bandpass ecg')
-plt.grid()
-plt.legend()
-plt.show()
+# plt.figure()
+# plt.title('Pre-processing')
+# plt.plot(ecg_zscore, label='standardized ecg')
+# plt.plot(notched_bandpass, label='notched bandpass ecg')
+# plt.grid()
+# plt.legend()
+# plt.show()
 
 # %% features bandpass filter
 
-hilbert_bp = ftelib.hilbert_envelope(notched_bandpass, fs, 50)
-shannon_bp = ftelib.shannon_envelopenergy(notched_bandpass, fs, 50)
-homomorphic_bp = ftelib.homomorphic_envelope(
-    notched_bandpass, fs, 50, median_window=21)
-hamming_bp = ftelib.hamming_smooth_envelope(notched_bandpass, 21, fs, 50)
+# hilbert_bp = ftelib.hilbert_envelope(notched_bandpass, fs, 50)
+# shannon_bp = ftelib.shannon_envelopenergy(notched_bandpass, fs, 50)
+# homomorphic_bp = ftelib.homomorphic_envelope(
+#     notched_bandpass, fs, 50, median_window=21)
+# hamming_bp = ftelib.hamming_smooth_envelope(notched_bandpass, 21, fs, 50)
 
-plt.figure()
-plt.title('Features from bandpass filters')
-plt.plot(hilbert_bp, label='hilbert envelope')
-plt.plot(shannon_bp, label='shannon envelope')
-plt.plot(homomorphic_bp, label='homomorphic envelope')
-plt.plot(hamming_bp, label='smooth energy')
-plt.grid()
-plt.legend()
-plt.show()
+# plt.figure()
+# plt.title('Features from bandpass filters')
+# plt.plot(hilbert_bp, label='hilbert envelope')
+# plt.plot(shannon_bp, label='shannon envelope')
+# plt.plot(homomorphic_bp, label='homomorphic envelope')
+# plt.plot(hamming_bp, label='smooth energy')
+# plt.grid()
+# plt.legend()
+# plt.show()
 
 # %% Process labels
-labels_raw = np.array(ludb_df.label[14])
+# labels_raw = np.array(ludb_df.label[14])
 
-# Label Processing
-desired_order = ['x', 'p', 'N', 't']
-# Extract the unique labels and reshape the labels for one-hot encoding
-unique_labels = np.unique(labels_raw)
-# Ensure that the desired order matches the unique labels
-assert set(desired_order) == set(
-    unique_labels), "The desired order does not match the unique labels"
+# # Label Processing
+# desired_order = ['x', 'p', 'N', 't']
+# # Extract the unique labels and reshape the labels for one-hot encoding
+# unique_labels = np.unique(labels_raw)
+# # Ensure that the desired order matches the unique labels
+# assert set(desired_order) == set(
+#     unique_labels), "The desired order does not match the unique labels"
 
-# Reshape the labels to a 2D array to fit the OneHotEncoder input
-labels_reshaped = labels_raw.reshape(-1, 1)
+# # Reshape the labels to a 2D array to fit the OneHotEncoder input
+# labels_reshaped = labels_raw.reshape(-1, 1)
 
-# Initialize the OneHotEncoder
-encoder = OneHotEncoder(sparse_output=False,
-                        categories=[desired_order])
+# # Initialize the OneHotEncoder
+# encoder = OneHotEncoder(sparse_output=False,
+#                         categories=[desired_order])
 
-# Fit and transform the labels to one-hot encoding
-# one_hot_encoded = np.abs(pplib.downsample(
-#     encoder.fit_transform(propagated_labels_reshaped), samplerate, 50))
+# # Fit and transform the labels to one-hot encoding
+# # one_hot_encoded = np.abs(pplib.downsample(
+# #     encoder.fit_transform(propagated_labels_reshaped), samplerate, 50))
 
-one_hot_encoded = encoder.fit_transform(labels_reshaped)
-one_hot_encoded = one_hot_encoded[::10, :]
+# one_hot_encoded = encoder.fit_transform(labels_reshaped)
+# one_hot_encoded = one_hot_encoded[::10, :]
+
+
+root_dir = r'..\ECG_PCG_structured_data.pkl'
+df = pd.read_pickle(root_dir)
