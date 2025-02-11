@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Nov 21 15:32:55 2024
+Created on Tue Feb 11 15:39:15 2025
 
 @author: danie
 """
@@ -36,7 +36,7 @@ import copy
 # U-NET architecture
 
 
-def unet_pcg(nch, patch_size, dropout=0.05):
+def unet_ecg(nch, patch_size, dropout=0.05):
     inputs = tf.keras.layers.Input(shape=(patch_size, nch))
     conv1 = tf.keras.layers.Conv1D(
         8, 3, activation='relu', padding='same')(inputs)
@@ -119,17 +119,17 @@ def unet_pcg(nch, patch_size, dropout=0.05):
 
 # %% Import Files
 # Load the train and validation datasets
-val_df = pd.read_pickle(r'..\ulsge_pcg_features.pkl')
+val_df = pd.read_pickle(r'..\ulsge_ecg_features.pkl')
 
-val_df['Homomorphic'] = val_df['Features'].apply(lambda x: x[:, 0])
-val_df['CWT_Morl'] = val_df['Features'].apply(lambda x: x[:, 1])
-val_df['CWT_Mexh'] = val_df['Features'].apply(lambda x: x[:, 2])
-val_df['Hilbert_Env'] = val_df['Features'].apply(lambda x: x[:, 3])
+val_df['Hilbert'] = val_df['Features'].apply(lambda x: x[:, 0])
+val_df['Shannon'] = val_df['Features'].apply(lambda x: x[:, 1])
+val_df['Homomorphic'] = val_df['Features'].apply(lambda x: x[:, 2])
+val_df['Hamming'] = val_df['Features'].apply(lambda x: x[:, 3])
 val_df = val_df.drop(columns=['Features'])
 
 # Convert the loaded DataFrames to numpy arrays
-val_data = val_df[['ID', 'Homomorphic', 'CWT_Morl',
-                   'CWT_Mexh', 'Hilbert_Env']].to_numpy()
+val_data = val_df[['ID', 'Hilbert', 'Shannon',
+                   'Homomorphic', 'Hamming']].to_numpy()
 
 # Feature creation
 BATCH_SIZE = 4
@@ -139,33 +139,3 @@ stride = 8
 
 # Create patches and structures for NN training
 val_features = ftelib.process_dataset_no_labels(val_data, patch_size, stride)
-
-# %% Neural Network model
-
-checkpoint_path = '../pcg_unet_weights/checkpoint_butter.keras'
-
-EPOCHS = 15
-learning_rate = 1e-4
-model = unet_pcg(nch, patch_size=patch_size)
-model.compile(optimizer=Adam(learning_rate=learning_rate), loss='categorical_crossentropy',
-              metrics=['CategoricalAccuracy', 'Precision', 'Recall'])
-
-
-# %% Inference pipeline
-
-model.load_weights(checkpoint_path)
-val_test = model.predict(val_features)
-
-# Reconstruct from patches
-
-# Get original lengths from validation data
-original_lengths = [len(seq) for seq in val_data[:, 1]]
-reconstructed_labels = ftelib.reconstruct_original_data(
-    val_test, original_lengths, patch_size, stride)
-
-# %% Save Probabilities
-
-predictions_pickle_path = r'..\ULSGE_pred_wv.pkl'
-
-with open(predictions_pickle_path, 'wb') as file:
-    pickle.dump(reconstructed_labels, file)

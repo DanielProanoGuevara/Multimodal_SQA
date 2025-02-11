@@ -335,7 +335,3 @@ import copy
 
 # one_hot_encoded = encoder.fit_transform(labels_reshaped)
 # one_hot_encoded = one_hot_encoded[::10, :]
-
-
-root_dir = r'..\ECG_PCG_structured_data.pkl'
-df = pd.read_pickle(root_dir)
