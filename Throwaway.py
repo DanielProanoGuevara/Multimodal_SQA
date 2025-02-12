@@ -41,21 +41,18 @@ import copy
 
 # %% ULSGE Dataset results
 # Import Original
-root_dir = r'..\DatasetCHVNGE\pcg_processed.pkl'
+root_dir = r'..\DatasetCHVNGE\pcg_ulsge.pkl'
 df = pd.read_pickle(root_dir)
-# Drop empty columns
-df = df.drop(index=[491, 503])
-df = df.reset_index(drop=True)
 # Resample them to 50 Hz
 # Optimize the processing of the dataset
-df['Processed Signal'] = df['Processed Signal'].apply(
-    lambda data: pplib.downsample(data, 1000, 50))
+df['Signal'] = df['Signal'].apply(
+    lambda data: pplib.downsample(data, 3000, 50))
 
 # Import Predictions
-pred_path = r'..\ULSGE_pred_wv.pkl'
+pred_path = r'..\ULSGE_pred_butter.pkl'
 with open(pred_path, 'rb') as file:
     predictions = pickle.load(file)
-
+"""
 # Create main figure
 fig = plt.figure(layout='constrained', figsize=(7, 8))
 fig.suptitle('ULSGE Segmentation Results - Wavelet Only')
@@ -113,6 +110,7 @@ bot[1].legend(loc=3)
 bot[1].grid()
 
 plt.show()
+"""
 # %%
 
 # pcg_dir = r"..\DatasetCHVNGE\5_AV.mp3"
