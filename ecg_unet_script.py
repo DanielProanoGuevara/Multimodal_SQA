@@ -139,3 +139,109 @@ stride = 8
 
 # Create patches and structures for NN training
 val_features = ftelib.process_dataset_no_labels(val_data, patch_size, stride)
+
+# %% Neural Network model
+
+checkpoint_path = '../ecg_unet_weights/checkpoint.keras'
+
+EPOCHS = 15
+learning_rate = 1e-4
+model = unet_ecg(nch, patch_size=patch_size)
+model.compile(optimizer=Adam(learning_rate=learning_rate), loss='categorical_crossentropy',
+              metrics=['CategoricalAccuracy', 'Precision', 'Recall'])
+
+# %% Inference pipeline
+
+model.load_weights(checkpoint_path)
+val_test = model.predict(val_features)
+
+# Reconstruct from patches
+
+# Get original lengths from validation data
+original_lengths = [len(seq) for seq in val_data[:, 1]]
+reconstructed_labels = ftelib.reconstruct_original_data(
+    val_test, original_lengths, patch_size, stride)
+
+# %% save probabilities
+
+predictions_pickle_path = r'..\ULSGE_ecg_pred.pkl'
+
+with open(predictions_pickle_path, 'wb') as file:
+    pickle.dump(reconstructed_labels, file)
+
+# %% Visualize examples
+
+# Import Original
+root_dir = r'..\DatasetCHVNGE\ecg_ulsge.pkl'
+df = pd.read_pickle(root_dir)
+
+# %%
+
+# Resample them to 50 Hz
+# Optimize the processing of the dataset
+df['Signal'] = df['Signal'].apply(
+    lambda data: pplib.downsample(data, 500, 50))
+
+# %%
+# Import Predictions
+pred_path = r'..\ULSGE_ecg_pred.pkl'
+with open(pred_path, 'rb') as file:
+    predictions = pickle.load(file)
+
+# %%
+
+# Create main figure
+fig = plt.figure(layout='constrained', figsize=(7, 8))
+fig.suptitle('ULSGE ECG Segmentation Results')
+
+subfigs = fig.subfigures(3, 1, hspace=0)
+
+top = subfigs[0].subplots(2, 1, sharex=True, sharey=True)
+subfigs[0].suptitle('Signal Quality 5')
+top[0].plot(pplib.min_max_norm2(df.iloc[41][2]))
+top[0].plot(predictions[41][:, 2], label='QRS')
+top[0].set_xticks([])
+top[0].set_ylim(-1, 1)
+top[0].legend(loc=3)
+top[0].grid()
+
+top[1].plot(pplib.min_max_norm2(df.iloc[41][2]))
+top[1].plot(predictions[41][:, 3], label='t')
+top[1].set_xticks([])
+top[1].set_ylim(-1, 1)
+top[1].legend(loc=3)
+top[1].grid()
+
+
+mid = subfigs[1].subplots(2, 1, sharex=True, sharey=True)
+subfigs[1].suptitle('Signal Quality 4')
+mid[0].plot(pplib.min_max_norm2(df.iloc[42][2]))
+mid[0].plot(predictions[42][:, 2], label='QRS')
+mid[0].set_xticks([])
+mid[0].set_ylim(-1, 1)
+mid[0].legend(loc=3)
+mid[0].grid()
+
+mid[1].plot(pplib.min_max_norm2(df.iloc[42][2]))
+mid[1].plot(predictions[42][:, 3], label='t')
+mid[1].set_xticks([])
+mid[1].set_ylim(-1, 1)
+mid[1].legend(loc=3)
+mid[1].grid()
+
+
+bot = subfigs[2].subplots(2, 1, sharex=True, sharey=True)
+subfigs[2].suptitle('Signal Quality 3')
+bot[0].plot(pplib.min_max_norm2(df.iloc[43][2]))
+bot[0].plot(predictions[43][:, 2], label='QRS')
+bot[0].set_xticks([])
+bot[0].set_ylim(-1, 1)
+bot[0].legend(loc=3)
+bot[0].grid()
+
+bot[1].plot(pplib.min_max_norm2(df.iloc[43][2]))
+bot[1].plot(predictions[43][:, 3], label='t')
+bot[1].set_xticks([])
+bot[1].set_ylim(-1, 1)
+bot[1].legend(loc=3)
+bot[1].grid()

@@ -40,79 +40,79 @@ from scipy.io import wavfile
 import copy
 
 # %% ULSGE Dataset results
-# # Import Original
-# root_dir = r'..\DatasetCHVNGE\pcg_processed.pkl'
-# df = pd.read_pickle(root_dir)
-# # Drop empty columns
-# df = df.drop(index=[491, 503])
-# df = df.reset_index(drop=True)
-# # Resample them to 50 Hz
-# # Optimize the processing of the dataset
-# df['Processed Signal'] = df['Processed Signal'].apply(
-#     lambda data: pplib.downsample(data, 1000, 50))
+# Import Original
+root_dir = r'..\DatasetCHVNGE\pcg_processed.pkl'
+df = pd.read_pickle(root_dir)
+# Drop empty columns
+df = df.drop(index=[491, 503])
+df = df.reset_index(drop=True)
+# Resample them to 50 Hz
+# Optimize the processing of the dataset
+df['Processed Signal'] = df['Processed Signal'].apply(
+    lambda data: pplib.downsample(data, 1000, 50))
 
-# # Import Predictions
-# pred_path = r'..\ULSGE_pred_wv.pkl'
-# with open(pred_path, 'rb') as file:
-#     predictions = pickle.load(file)
+# Import Predictions
+pred_path = r'..\ULSGE_pred_wv.pkl'
+with open(pred_path, 'rb') as file:
+    predictions = pickle.load(file)
 
-# # Create main figure
-# fig = plt.figure(layout='constrained', figsize=(7, 8))
-# fig.suptitle('ULSGE Segmentation Results - Wavelet Only')
+# Create main figure
+fig = plt.figure(layout='constrained', figsize=(7, 8))
+fig.suptitle('ULSGE Segmentation Results - Wavelet Only')
 
-# subfigs = fig.subfigures(3, 1, hspace=0)
+subfigs = fig.subfigures(3, 1, hspace=0)
 
-# top = subfigs[0].subplots(2, 1, sharex=True, sharey=True)
-# subfigs[0].suptitle('Signal Quality 5')
-# top[0].plot(pplib.min_max_norm2(df.iloc[620][2])[380:800])
-# top[0].plot(predictions[620][380:800, 0], label='S1')
-# top[0].set_xticks([])
-# top[0].set_ylim(-1, 1)
-# top[0].legend(loc=3)
-# top[0].grid()
+top = subfigs[0].subplots(2, 1, sharex=True, sharey=True)
+subfigs[0].suptitle('Signal Quality 5')
+top[0].plot(pplib.min_max_norm2(df.iloc[620][2])[380:800])
+top[0].plot(predictions[620][380:800, 0], label='S1')
+top[0].set_xticks([])
+top[0].set_ylim(-1, 1)
+top[0].legend(loc=3)
+top[0].grid()
 
-# top[1].plot(pplib.min_max_norm2(df.iloc[620][2])[380:800])
-# top[1].plot(predictions[620][380:800, 2], label='S2')
-# top[1].set_xticks([])
-# top[1].set_ylim(-1, 1)
-# top[1].legend(loc=3)
-# top[1].grid()
-
-
-# mid = subfigs[1].subplots(2, 1, sharex=True, sharey=True)
-# subfigs[1].suptitle('Signal Quality 4')
-# mid[0].plot(pplib.min_max_norm2(df.iloc[608][2])[380:800])
-# mid[0].plot(predictions[608][380:800, 0], label='S1')
-# mid[0].set_xticks([])
-# mid[0].set_ylim(-1, 1)
-# mid[0].legend(loc=3)
-# mid[0].grid()
-
-# mid[1].plot(pplib.min_max_norm2(df.iloc[608][2])[380:800])
-# mid[1].plot(predictions[608][380:800, 2], label='S2')
-# mid[1].set_xticks([])
-# mid[1].set_ylim(-1, 1)
-# mid[1].legend(loc=3)
-# mid[1].grid()
+top[1].plot(pplib.min_max_norm2(df.iloc[620][2])[380:800])
+top[1].plot(predictions[620][380:800, 2], label='S2')
+top[1].set_xticks([])
+top[1].set_ylim(-1, 1)
+top[1].legend(loc=3)
+top[1].grid()
 
 
-# bot = subfigs[2].subplots(2, 1, sharex=True, sharey=True)
-# subfigs[2].suptitle('Signal Quality 3')
-# bot[0].plot(pplib.min_max_norm2(df.iloc[601][2])[380:800])
-# bot[0].plot(predictions[601][380:800, 0], label='S1')
-# bot[0].set_xticks([])
-# bot[0].set_ylim(-1, 1)
-# bot[0].legend(loc=3)
-# bot[0].grid()
+mid = subfigs[1].subplots(2, 1, sharex=True, sharey=True)
+subfigs[1].suptitle('Signal Quality 4')
+mid[0].plot(pplib.min_max_norm2(df.iloc[608][2])[380:800])
+mid[0].plot(predictions[608][380:800, 0], label='S1')
+mid[0].set_xticks([])
+mid[0].set_ylim(-1, 1)
+mid[0].legend(loc=3)
+mid[0].grid()
 
-# bot[1].plot(pplib.min_max_norm2(df.iloc[601][2])[380:800])
-# bot[1].plot(predictions[601][380:800, 2], label='S2')
-# bot[1].set_xticks([])
-# bot[1].set_ylim(-1, 1)
-# bot[1].legend(loc=3)
-# bot[1].grid()
+mid[1].plot(pplib.min_max_norm2(df.iloc[608][2])[380:800])
+mid[1].plot(predictions[608][380:800, 2], label='S2')
+mid[1].set_xticks([])
+mid[1].set_ylim(-1, 1)
+mid[1].legend(loc=3)
+mid[1].grid()
 
-# plt.show()
+
+bot = subfigs[2].subplots(2, 1, sharex=True, sharey=True)
+subfigs[2].suptitle('Signal Quality 3')
+bot[0].plot(pplib.min_max_norm2(df.iloc[601][2])[380:800])
+bot[0].plot(predictions[601][380:800, 0], label='S1')
+bot[0].set_xticks([])
+bot[0].set_ylim(-1, 1)
+bot[0].legend(loc=3)
+bot[0].grid()
+
+bot[1].plot(pplib.min_max_norm2(df.iloc[601][2])[380:800])
+bot[1].plot(predictions[601][380:800, 2], label='S2')
+bot[1].set_xticks([])
+bot[1].set_ylim(-1, 1)
+bot[1].legend(loc=3)
+bot[1].grid()
+
+plt.show()
 # %%
 
 # pcg_dir = r"..\DatasetCHVNGE\5_AV.mp3"
