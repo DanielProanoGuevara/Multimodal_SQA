@@ -626,3 +626,44 @@ def max_temporal_modelling(seq, num_states=4):
         if seq[t] != seq[t - 1] and seq[t] != ((seq[t - 1] + 1) % num_states):
             seq[t] = seq[t - 1]
     return seq
+
+def count_segments(signal, value):
+    """
+    Count the number of distinct '0' segments in the signal.
+    
+    Parameters:
+    signal (np.array): 1D NumPy array representing the time series.
+    
+    Returns:
+    int: The count of distinct '0' segments.
+    """
+    # Create a boolean array: True where the signal is equal to value.
+    is_val = (signal == value)
+    
+    # Initialize segment count. If the first element is zero, it starts a segment.
+    count = 1 if is_val[0] else 0
+    
+    # Find transitions: non-zero to zero.
+    # This finds indices where the current sample is 0 and the previous sample is not 0.
+    transitions = np.where((~is_val[:-1]) & (is_val[1:]))[0]
+    count += len(transitions)
+    
+    return count
+
+def calculate_bpm(segment_count, total_samples, fs=50):
+    """
+    Calculate beats per minute (BPM) based on the number of segments and total samples.
+    
+    Parameters:
+    zero_segment_count (int): Number of distinct '0' segments detected.
+    total_samples (int): Total number of samples in the signal.
+    fs (int): Sampling frequency in Hz (default is 50 Hz).
+    
+    Returns:
+    float: BPM value.
+    """
+    # Calculate total duration in seconds.
+    T = total_samples / fs
+    # Calculate BPM using the derived formula.
+    bpm = (segment_count / T) * 60  # Equivalent to (zero_segment_count * fs * 60) / total_samples
+    return bpm
