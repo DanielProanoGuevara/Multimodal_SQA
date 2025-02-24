@@ -66,9 +66,6 @@ def process_signal_data(pkl_file):
     # Select only the relevant columns
     df_ecg = df[['ID', 'Auscultation_Point', 'ECG']].copy()
     
-    # Remove rows where 'ECG' is not a non-empty list
-    df_ecg = df_ecg[df_ecg['ECG'].apply(lambda x: isinstance(x, list) and len(x) > 0)]
-    
     # Apply z-score standardization to the 'ECG' column.
     # This uses the externally provided z_score_standardization() function.
     df_ecg['ECG'] = df_ecg['ECG'].apply(lambda signal: pplib.z_score_standardization(signal))
@@ -78,9 +75,6 @@ def process_signal_data(pkl_file):
     #############################################
     # Select the columns required for PCG processing (include 'Source' for conditional processing)
     df_pcg = df[['ID', 'Auscultation_Point', 'PCG', 'Source']].copy()
-    
-    # Remove rows where 'PCG' is not a non-empty list
-    df_pcg = df_pcg[df_pcg['PCG'].apply(lambda x: isinstance(x, list) and len(x) > 0)]
     
     def process_pcg_signal(row):
         """

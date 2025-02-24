@@ -6,9 +6,15 @@ Created on Wed Oct 23 12:32:40 2024
 """
 # Libraries import
 import os
+import sys
 import glob
 import numpy as np
 import pandas as pd
+
+# Get the absolute path of the mother folder
+origi_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# Add origi folder to sys.path
+sys.path.append(origi_path)
 import preprocessing_lib as pplib
 import feature_extraction_lib as ftelib
 
@@ -30,7 +36,7 @@ def process_signals_from_pkl(file_path):
 
     for _, row in df.iterrows():
         try:
-            data = row['Signal']
+            data = row['PCG']
 
             # Frequency downsampling
             data_ds = pplib.downsample(data, 3000, 1000)
@@ -74,7 +80,7 @@ def process_signals_from_pkl(file_path):
             # Append features to the list
             processed_features.append({
                 'ID': row['ID'],
-                'Auscultation Point': row['Auscultation Point'],
+                'Auscultation_Point': row['Auscultation_Point'],
                 'Features': features
             })
         except Exception as e:
