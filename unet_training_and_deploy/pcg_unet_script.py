@@ -2,10 +2,11 @@
 """
 Created on Thu Nov 21 15:32:55 2024
 
-@author: danie
+@author: Daniel Proaño-Guevara
 """
 
 import os
+import sys
 
 import librosa
 import logging
@@ -27,6 +28,10 @@ from sklearn.metrics import accuracy_score, precision_score
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint
 
+# Get the absolute path of the mother folder
+origi_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# Add origi folder to sys.path
+sys.path.append(origi_path)
 import preprocessing_lib as pplib
 import feature_extraction_lib as ftelib
 import file_process_lib as importlib

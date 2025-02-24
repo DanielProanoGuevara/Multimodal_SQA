@@ -2,10 +2,11 @@
 """
 Created on Tue Feb 11 15:39:15 2025
 
-@author: danie
+@author: Daniel Proaño-Guevara
 """
 
 import os
+import sys
 
 import librosa
 import logging
@@ -27,6 +28,10 @@ from sklearn.metrics import accuracy_score, precision_score
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint
 
+# Get the absolute path of the mother folder
+origi_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# Add origi folder to sys.path
+sys.path.append(origi_path)
 import preprocessing_lib as pplib
 import feature_extraction_lib as ftelib
 import file_process_lib as importlib
@@ -179,7 +184,7 @@ df = pd.read_pickle(root_dir)
 
 # Resample them to 50 Hz
 # Optimize the processing of the dataset
-df['Signal'] = df['Signal'].apply(
+df['ECG'] = df['ECG'].apply(
     lambda data: pplib.downsample(data, 500, 50))
 
 # %%
@@ -245,3 +250,5 @@ bot[1].set_xticks([])
 bot[1].set_ylim(-1, 1)
 bot[1].legend(loc=3)
 bot[1].grid()
+
+fig.show()
