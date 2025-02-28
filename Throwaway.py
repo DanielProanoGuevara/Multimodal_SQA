@@ -45,7 +45,9 @@ SIGNAL_IDX = 693
 
 # %% Import PCG
 root_dir = r'..\DatasetCHVNGE\pcg_ulsge.pkl'
-pcg_df = pd.read_pickle(root_dir)
+pcg_df_original = pd.read_pickle(root_dir)
+# Deep copy
+pcg_df = copy.deepcopy(pcg_df_original)
 # Resample them to 50 Hz
 pcg_df['PCG'] = pcg_df['PCG'].apply(
     lambda data: pplib.downsample(data, 3000, 50))
@@ -71,7 +73,9 @@ pcg_state_predictions = np.array(
 
 # %% Import ECG
 root_dir = r'..\DatasetCHVNGE\ecg_ulsge.pkl'
-ecg_df = pd.read_pickle(root_dir)
+ecg_df_original = pd.read_pickle(root_dir)
+# Deep copy
+ecg_df = copy.deepcopy(ecg_df_original)
 # Resample them to 50 Hz
 ecg_df['ECG'] = ecg_df['ECG'].apply(
     lambda data: pplib.downsample(data, 500, 50))
@@ -95,9 +99,25 @@ ecg_state_predictions = np.array(
     [prediction for prediction in ecg_prediction_labels], dtype=object)
 
 # %% Visualization of both signals
+# Originals (For quality re-annotation)
+fig, ax = plt.subplots(2, 1, layout='constrained')
+fig.suptitle(
+    f"ULGSE, patient {ecg_df['ID'][SIGNAL_IDX]}, auscultation point {ecg_df['Auscultation_Point'][SIGNAL_IDX]} Original")
+
+ax[0].set_title('ECG')
+ax[0].plot(ecg_df_original['ECG'][SIGNAL_IDX])
+ax[0].grid()
+
+ax[1].set_title('PCG')
+ax[1].plot(pcg_df_original['PCG'][SIGNAL_IDX])
+ax[1].grid()
+
+plt.show()
+
+# Processed Signals
 fig = plt.figure(layout='constrained')
 fig.suptitle(
-    f"ULGSE, patient {ecg_df['ID'][SIGNAL_IDX]}, auscultation point {ecg_df['Auscultation_Point'][SIGNAL_IDX]} Raw Signals")
+    f"ULGSE, patient {ecg_df['ID'][SIGNAL_IDX]}, auscultation point {ecg_df['Auscultation_Point'][SIGNAL_IDX]} Raw -Resampled- Signals")
 
 subfigs = fig.subfigures(2, 1, hspace=0)
 
