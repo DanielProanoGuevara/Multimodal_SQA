@@ -41,7 +41,7 @@ import copy
 
 # %% Constants
 AVERAGE_WINDOW = 3
-SIGNAL_IDX = 67
+SIGNAL_IDX = 693
 
 # %% Import PCG
 root_dir = r'..\DatasetCHVNGE\pcg_ulsge.pkl'
@@ -51,7 +51,7 @@ pcg_df['PCG'] = pcg_df['PCG'].apply(
     lambda data: pplib.downsample(data, 3000, 50))
 
 # Import Predictions
-pred_path = r'..\ULSGE_pred_butter.pkl'
+pred_path = r'..\ulsge_pcg_pred.pkl'
 with open(pred_path, 'rb') as file:
     pcg_predictions = pickle.load(file)
 
@@ -76,7 +76,7 @@ ecg_df = pd.read_pickle(root_dir)
 ecg_df['ECG'] = ecg_df['ECG'].apply(
     lambda data: pplib.downsample(data, 500, 50))
 # Import Predictions
-predictions_pickle_path = r'..\ULSGE_ecg_pred.pkl'
+predictions_pickle_path = r'..\ulsge_ecg_pred.pkl'
 with open(predictions_pickle_path, 'rb') as file:
     ecg_predictions = pickle.load(file)
 
@@ -119,16 +119,18 @@ subfigs[1].suptitle('Delineations')
 
 bot[0].set_title('ECG Delineations')
 bot[0].plot((pplib.min_max_norm2(
-    ecg_df['ECG'][SIGNAL_IDX])*2 + 1.5), label='ECG raw')
-bot[0].plot(ecg_state_predictions[SIGNAL_IDX], label='ECG Delineation')
+    ecg_df['ECG'][SIGNAL_IDX][300:700])*2 + 1.5), label='ECG raw')
+bot[0].plot(ecg_state_predictions[SIGNAL_IDX]
+            [300:700], label='ECG Delineation')
 bot[0].set_xticks([])
 bot[0].legend(loc=3)
 bot[0].grid()
 
 bot[1].set_title('PCG Delineations')
 bot[1].plot((pplib.min_max_norm2(
-    pcg_df['PCG'][SIGNAL_IDX])*2 + 1.5), label='PCG raw')
-bot[1].plot(pcg_state_predictions[SIGNAL_IDX], label='PCG Delineation')
+    pcg_df['PCG'][SIGNAL_IDX][300:700])*2 + 1.5), label='PCG raw')
+bot[1].plot(pcg_state_predictions[SIGNAL_IDX]
+            [300:700], label='PCG Delineation')
 bot[1].set_xticks([])
 bot[1].legend(loc=3)
 bot[1].grid()
@@ -180,6 +182,3 @@ ax[1].legend(loc=3)
 ax[1].grid()
 
 plt.show()
-
-
-# Analyze alignment with francesco... Align based exclussively with probabilities?
