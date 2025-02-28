@@ -105,7 +105,7 @@ def process_signal_data(pkl_file):
     
     return df_ecg, df_pcg
 
-# Example usage:
+# Usage:
 if __name__ == "__main__":
     pkl_file = "../DatasetCHVNGE/compiled_dataset.pkl"  # Path to your pickle file
     ecg_pickle_path = "../DatasetCHVNGE/ecg_ulsge.pkl"

@@ -51,7 +51,7 @@ def process_signals_from_pkl(file_path):
 
             # Butterworth bandpass filtering
             ecg_bandpass = pplib.butterworth_filter(
-                data, 'bandpass', order=6, fs=FS, fc=[0.5, 100])
+                data, 'bandpass', order=6, fs=FS, fc=[0.5, 150])
 
             # Notch. Remove 50 Hz
             ecg_notch = signal.filtfilt(B, A, ecg_bandpass)

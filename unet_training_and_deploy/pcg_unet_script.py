@@ -170,7 +170,7 @@ reconstructed_labels = ftelib.reconstruct_original_data(
 
 # %% Save Probabilities
 
-predictions_pickle_path = r'..\pcg_ulsge_pred.pkl'
+predictions_pickle_path = r'..\ulsge_pcg_pred.pkl'
 
 with open(predictions_pickle_path, 'wb') as file:
     pickle.dump(reconstructed_labels, file)

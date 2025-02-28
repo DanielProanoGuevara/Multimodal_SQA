@@ -99,7 +99,7 @@ fig = plt.figure(layout='constrained')
 fig.suptitle(
     f"ULGSE, patient {ecg_df['ID'][SIGNAL_IDX]}, auscultation point {ecg_df['Auscultation_Point'][SIGNAL_IDX]} Raw Signals")
 
-subfigs = fig.subfigures(3, 1, hspace=0)
+subfigs = fig.subfigures(2, 1, hspace=0)
 
 top = subfigs[0].subplots(2, 1, sharex=True)
 subfigs[0].suptitle('Raw Signals')
@@ -114,27 +114,30 @@ top[1].legend(loc=3)
 top[1].grid()
 
 
-mid = subfigs[1].subplots(1, 1, sharex=True)
-subfigs[1].suptitle('ECG Delineation -- zoomed in')
-mid.plot((pplib.min_max_norm2(
-    ecg_df['ECG'][SIGNAL_IDX])*2 + 1.5)[300:700], label='ECG raw')
-mid.plot(ecg_state_predictions[SIGNAL_IDX][300:700], label='ECG Delineation')
-mid.set_xticks([])
-mid.legend(loc=3)
-mid.grid()
+bot = subfigs[1].subplots(2, 1, sharex=True)
+subfigs[1].suptitle('Delineations')
 
-bot = subfigs[2].subplots(1, 1, sharex=True)
-subfigs[2].suptitle('PCG Delineation -- zoomed in')
-bot.plot((pplib.min_max_norm2(
-    pcg_df['PCG'][SIGNAL_IDX])*2 + 1.5)[300:700], label='PCG raw')
-bot.plot(pcg_state_predictions[SIGNAL_IDX][300:700], label='PCG Delineation')
-bot.set_xticks([])
-bot.legend(loc=3)
-bot.grid()
+bot[0].set_title('ECG Delineations')
+bot[0].plot((pplib.min_max_norm2(
+    ecg_df['ECG'][SIGNAL_IDX])*2 + 1.5), label='ECG raw')
+bot[0].plot(ecg_state_predictions[SIGNAL_IDX], label='ECG Delineation')
+bot[0].set_xticks([])
+bot[0].legend(loc=3)
+bot[0].grid()
+
+bot[1].set_title('PCG Delineations')
+bot[1].plot((pplib.min_max_norm2(
+    pcg_df['PCG'][SIGNAL_IDX])*2 + 1.5), label='PCG raw')
+bot[1].plot(pcg_state_predictions[SIGNAL_IDX], label='PCG Delineation')
+bot[1].set_xticks([])
+bot[1].legend(loc=3)
+bot[1].grid()
 
 fig.show()
 
 # %% Alignment analysis
+
+# Use EXCLUSSIVELY the neggative lag, being that ECG _always_ precede PCG
 e_to_p_correlation = signal.correlate(
     ecg_state_predictions[SIGNAL_IDX], pcg_state_predictions[SIGNAL_IDX], mode='full')
 e_to_p_corr_lags = signal.correlation_lags(

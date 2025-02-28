@@ -169,7 +169,7 @@ reconstructed_labels = ftelib.reconstruct_original_data(
 
 # %% save probabilities
 
-predictions_pickle_path = r'..\ULSGE_ecg_pred.pkl'
+predictions_pickle_path = r'..\ulsge_ecg_pred.pkl'
 
 with open(predictions_pickle_path, 'wb') as file:
     pickle.dump(reconstructed_labels, file)
@@ -189,7 +189,7 @@ df['ECG'] = df['ECG'].apply(
 
 # %%
 # Import Predictions
-pred_path = r'..\ULSGE_ecg_pred.pkl'
+pred_path = r'..\ulsge_ecg_pred.pkl'
 with open(pred_path, 'rb') as file:
     predictions = pickle.load(file)
 
@@ -203,15 +203,15 @@ subfigs = fig.subfigures(3, 1, hspace=0)
 
 top = subfigs[0].subplots(2, 1, sharex=True, sharey=True)
 subfigs[0].suptitle('Signal Quality 5')
-top[0].plot(pplib.min_max_norm2(df.iloc[41][2]))
-top[0].plot(predictions[41][:, 2], label='QRS')
+top[0].plot(pplib.min_max_norm2(df.iloc[67][2]))
+top[0].plot(predictions[67][:, 2], label='QRS')
 top[0].set_xticks([])
 top[0].set_ylim(-1, 1)
 top[0].legend(loc=3)
 top[0].grid()
 
-top[1].plot(pplib.min_max_norm2(df.iloc[41][2]))
-top[1].plot(predictions[41][:, 3], label='t')
+top[1].plot(pplib.min_max_norm2(df.iloc[67][2]))
+top[1].plot(predictions[67][:, 3], label='t')
 top[1].set_xticks([])
 top[1].set_ylim(-1, 1)
 top[1].legend(loc=3)
@@ -220,15 +220,15 @@ top[1].grid()
 
 mid = subfigs[1].subplots(2, 1, sharex=True, sharey=True)
 subfigs[1].suptitle('Signal Quality 4')
-mid[0].plot(pplib.min_max_norm2(df.iloc[42][2]))
-mid[0].plot(predictions[42][:, 2], label='QRS')
+mid[0].plot(pplib.min_max_norm2(df.iloc[85][2]))
+mid[0].plot(predictions[85][:, 2], label='QRS')
 mid[0].set_xticks([])
 mid[0].set_ylim(-1, 1)
 mid[0].legend(loc=3)
 mid[0].grid()
 
-mid[1].plot(pplib.min_max_norm2(df.iloc[42][2]))
-mid[1].plot(predictions[42][:, 3], label='t')
+mid[1].plot(pplib.min_max_norm2(df.iloc[85][2]))
+mid[1].plot(predictions[85][:, 3], label='t')
 mid[1].set_xticks([])
 mid[1].set_ylim(-1, 1)
 mid[1].legend(loc=3)
@@ -237,15 +237,15 @@ mid[1].grid()
 
 bot = subfigs[2].subplots(2, 1, sharex=True, sharey=True)
 subfigs[2].suptitle('Signal Quality 3')
-bot[0].plot(pplib.min_max_norm2(df.iloc[43][2]))
-bot[0].plot(predictions[43][:, 2], label='QRS')
+bot[0].plot(pplib.min_max_norm2(df.iloc[307][2]))
+bot[0].plot(predictions[307][:, 2], label='QRS')
 bot[0].set_xticks([])
 bot[0].set_ylim(-1, 1)
 bot[0].legend(loc=3)
 bot[0].grid()
 
-bot[1].plot(pplib.min_max_norm2(df.iloc[43][2]))
-bot[1].plot(predictions[43][:, 3], label='t')
+bot[1].plot(pplib.min_max_norm2(df.iloc[307][2]))
+bot[1].plot(predictions[307][:, 3], label='t')
 bot[1].set_xticks([])
 bot[1].set_ylim(-1, 1)
 bot[1].legend(loc=3)
