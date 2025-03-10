@@ -41,7 +41,8 @@ import copy
 
 # %% Constants
 AVERAGE_WINDOW = 3
-SIGNAL_IDX = 219
+SIGNAL_IDX = 704
+EXTEND_WINDOW = 8
 
 # %% Import PCG
 root_dir = r'..\DatasetCHVNGE\pcg_ulsge.pkl'
@@ -50,7 +51,7 @@ pcg_df_original = pd.read_pickle(root_dir)
 pcg_df = copy.deepcopy(pcg_df_original)
 # Resample them to 50 Hz
 pcg_df['PCG'] = pcg_df['PCG'].apply(
-    lambda data: pplib.downsample(data, 3000, 50))
+    lambda data: pplib.downsample(data, 3000, 1000))
 
 # Import Predictions
 pred_path = r'..\ulsge_pcg_pred.pkl'
@@ -88,7 +89,7 @@ ecg_df_original = pd.read_pickle(root_dir)
 ecg_df = copy.deepcopy(ecg_df_original)
 # Resample them to 50 Hz
 ecg_df['ECG'] = ecg_df['ECG'].apply(
-    lambda data: pplib.downsample(data, 500, 50))
+    lambda data: pplib.upsample(data, 500, 1000))
 # Import Predictions
 predictions_pickle_path = r'..\ulsge_ecg_pred.pkl'
 with open(predictions_pickle_path, 'rb') as file:
@@ -152,68 +153,51 @@ subfigs[1].suptitle('Delineations')
 
 bot[0].set_title('ECG Delineations')
 bot[0].plot((pplib.min_max_norm2(
-    ecg_df['ECG'][SIGNAL_IDX][300:700])*2 + 1.5), label='ECG raw')
-bot[0].plot(ecg_state_predictions[SIGNAL_IDX]
-            [300:700], label='ECG Delineation')
+    ecg_df['ECG'][SIGNAL_IDX])*2 + 1.5), label='ECG raw')
+bot[0].plot(pplib.resample_delineation(
+    ecg_state_predictions[SIGNAL_IDX], 50, 1000), label='ECG Delineation')
 bot[0].set_xticks([])
 bot[0].legend(loc=3)
 bot[0].grid()
 
 bot[1].set_title('PCG Delineations')
 bot[1].plot((pplib.min_max_norm2(
-    pcg_df['PCG'][SIGNAL_IDX][300:700])*2 + 1.5), label='PCG raw')
-bot[1].plot(pcg_state_predictions[SIGNAL_IDX]
-            [300:700], label='PCG Delineation')
+    pcg_df['PCG'][SIGNAL_IDX])*2 + 1.5), label='PCG raw')
+bot[1].plot(pplib.resample_delineation(
+    pcg_state_predictions[SIGNAL_IDX], 50, 1000), label='PCG Delineation')
 bot[1].set_xticks([])
 bot[1].legend(loc=3)
 bot[1].grid()
 
 fig.show()
 
-# %% Alignment analysis
-
-# Use EXCLUSSIVELY the neggative lag, being that ECG _always_ precede PCG
-e_to_p_correlation = signal.correlate(
-    ecg_state_predictions[SIGNAL_IDX], pcg_state_predictions[SIGNAL_IDX], mode='full')
-e_to_p_corr_lags = signal.correlation_lags(
-    ecg_state_predictions[SIGNAL_IDX].size, pcg_state_predictions[SIGNAL_IDX].size, mode='full')
-e_to_p_lag = e_to_p_corr_lags[np.argmax(e_to_p_correlation)]
-print('ECG to PCG lag: ', e_to_p_lag)
-
-if np.sign(e_to_p_lag) == 1:
-    corrected_pcg = pcg_state_predictions[SIGNAL_IDX][:-abs(e_to_p_lag)]
-    corrected_ecg = ecg_state_predictions[SIGNAL_IDX][abs(e_to_p_lag):]
-    # This might be signaling inverted labeling for PCG
-elif np.sign(e_to_p_lag) == -1:
-    corrected_pcg = pcg_state_predictions[SIGNAL_IDX][abs(e_to_p_lag):]
-    corrected_ecg = ecg_state_predictions[SIGNAL_IDX][:-abs(e_to_p_lag)]
-elif np.sign(e_to_p_lag) == 0:
-    pass
-
-# Alignment verification
-correlation = signal.correlate(corrected_ecg, corrected_pcg, mode='full')
-corr_lags = signal.correlation_lags(
-    corrected_ecg.size, corrected_pcg.size, mode='full')
-lag = corr_lags[np.argmax(correlation)]
-print('ECG to PCG lag after correction: ', lag)
 
 # %% Visualize alignments
-fig, ax = plt.subplots(2, 1, sharex=True, layout='constrained')
-fig.suptitle(
-    f"ULGSE, patient {ecg_df['ID'][SIGNAL_IDX]}, auscultation point {ecg_df['Auscultation_Point'][SIGNAL_IDX]} Synchronization Analysis")
+# fig, ax = plt.subplots(2, 1, sharex=True, layout='constrained')
+# fig.suptitle(
+#     f"ULGSE, patient {ecg_df['ID'][SIGNAL_IDX]}, auscultation point {ecg_df['Auscultation_Point'][SIGNAL_IDX]} Synchronization Analysis")
 
-ax[0].set_title('Unsynchronized Sequences')
-ax[0].plot(ecg_state_predictions[SIGNAL_IDX], label='ECG Sequences')
-ax[0].plot(pcg_state_predictions[SIGNAL_IDX], label='PCG Sequences')
-ax[0].legend(loc=3)
-ax[0].grid()
+# ax[0].set_title('Unsynchronized Sequences')
+# ax[0].plot(ecg_state_predictions[SIGNAL_IDX], label='ECG Sequences')
+# ax[0].plot(pcg_state_predictions[SIGNAL_IDX], label='PCG Sequences')
+# ax[0].legend(loc=3)
+# ax[0].grid()
 
-ax[1].set_title('Synchronized Sequences')
-ax[1].plot(corrected_ecg, label='ECG Sequences')
-ax[1].plot(corrected_pcg, label='PCG Sequences')
-ax[1].legend(loc=3)
-ax[1].grid()
+# ax[1].set_title('Synchronized Sequences')
+# ax[1].plot(corrected_ecg, label='ECG Sequences')
+# ax[1].plot(corrected_pcg, label='PCG Sequences')
+# ax[1].legend(loc=3)
+# ax[1].grid()
 
+# plt.show()
+
+plt.figure(layout='constrained')
+plt.title(
+    f"ULGSE, patient {ecg_df['ID'][SIGNAL_IDX]}, auscultation point {ecg_df['Auscultation_Point'][SIGNAL_IDX]} Delineations Overlapped")
+plt.plot(ecg_state_predictions[SIGNAL_IDX], label='ECG Sequences')
+plt.plot(pcg_state_predictions[SIGNAL_IDX], label='PCG Sequences')
+plt.legend(loc=3)
+plt.grid()
 plt.show()
 
 # %% Scoring Calculations base functions
@@ -277,8 +261,8 @@ def match_intervals(ref_intervals, test_intervals, min_overlap=1):
 # %% Compute the scores for each segment
 
 
-ecg_signal = corrected_ecg
-pcg_signal = corrected_pcg
+ecg_signal = ecg_state_predictions[SIGNAL_IDX]
+pcg_signal = pcg_state_predictions[SIGNAL_IDX]
 lambda_penalty = 0.1
 min_duration = 1
 min_overlap = 1
@@ -290,9 +274,58 @@ ecg_twave = get_intervals(ecg_signal, target_label=2,
 pcg_s1 = get_intervals(pcg_signal, target_label=0, min_duration=min_duration)
 pcg_s2 = get_intervals(pcg_signal, target_label=2, min_duration=min_duration)
 
-# ECG-to-PCG matching linear combination strategy
-match_qrs = match_intervals(ecg_qrs, pcg_s1, min_overlap=min_overlap)
-match_twave = match_intervals(ecg_twave, pcg_s2, min_overlap=min_overlap)
+# ECG-to-PCG matching
+# Extend to the right ECG segments
+qrs_extended = pplib.extend_intervals(ecg_qrs, 'right', EXTEND_WINDOW)
+twave_extended = pplib.extend_intervals(ecg_twave, 'right', EXTEND_WINDOW)
+
+# linear combination strategy
+match_qrs = match_intervals(qrs_extended, pcg_s1, min_overlap=min_overlap)
+match_twave = match_intervals(twave_extended, pcg_s2, min_overlap=min_overlap)
+
+# QRS should match with S1, T-wave should match with S2
+total_ecg = len(qrs_extended) + len(twave_extended)
+matches_ecg = match_qrs + match_twave
+# Apply linear penalty for missing matches
+score_ecg_to_pcg = (matches_ecg - lambda_penalty *
+                    (total_ecg - matches_ecg)) / total_ecg if total_ecg > 0 else 0
+
+print('Linear combination of metrics E2P: ', score_ecg_to_pcg)
+
+# matching minima strategy
+# Weighted Recall
+# Compute score for QRS: if no QRS intervals, assume worst match (score = 0)
+if len(qrs_extended) > 0:
+    score_qrs = (match_qrs - lambda_penalty *
+                 (len(qrs_extended) - match_qrs)) / len(qrs_extended)
+else:
+    score_qrs = 0
+
+# Compute score for T-wave: if no T-wave intervals, assume worst match (score = 0)
+if len(twave_extended) > 0:
+    score_twave = (match_twave - lambda_penalty *
+                   (len(twave_extended) - match_twave)) / len(twave_extended)
+else:
+    score_twave = 1
+
+# Overall ECG-to-PCG score is the minimum of the two scores to ensure both segments align well
+score_ecg_to_pcg = min(score_qrs, score_twave)
+
+print('Minimum-based metrics E2P: ', score_ecg_to_pcg)
+
+# %%
+# PCG-to_ECG matching
+# Extend PCG segments to the left
+s1_extended = pplib.extend_intervals(pcg_s1, 'left', EXTEND_WINDOW)
+s2_extended = pplib.extend_intervals(pcg_s2, 'left', EXTEND_WINDOW)
+
+# Linear combination
+match_s1 = match_intervals(s1_extended, ecg_qrs, min_overlap=min_overlap)
+match_s2 = match_intervals(s2_extended, ecg_twave, min_overlap=min_overlap)
+
+
+"""Pendiente"""
+
 
 # QRS should match with S1, T-wave should match with S2
 total_ecg = len(ecg_qrs) + len(ecg_twave)
@@ -301,25 +334,4 @@ matches_ecg = match_qrs + match_twave
 score_ecg_to_pcg = (matches_ecg - lambda_penalty *
                     (total_ecg - matches_ecg)) / total_ecg if total_ecg > 0 else 0
 
-print('Linear combination of metrics: ', score_ecg_to_pcg)
-
-# ECG-to-PCG matching minimums strategy
-# Weighted Recall
-# Compute score for QRS: if no QRS intervals, assume worst match (score = 0)
-if len(ecg_qrs) > 0:
-    score_qrs = (match_qrs - lambda_penalty *
-                 (len(ecg_qrs) - match_qrs)) / len(ecg_qrs)
-else:
-    score_qrs = 0
-
-# Compute score for T-wave: if no T-wave intervals, assume worst match (score = 0)
-if len(ecg_twave) > 0:
-    score_twave = (match_twave - lambda_penalty *
-                   (len(ecg_twave) - match_twave)) / len(ecg_twave)
-else:
-    score_twave = 1
-
-# Overall ECG-to-PCG score is the minimum of the two scores to ensure both segments align well
-score_ecg_to_pcg = min(score_qrs, score_twave)
-
-print('Minimum-based metrics: ', score_ecg_to_pcg)
+print('Linear combination of metrics E2P: ', score_ecg_to_pcg)

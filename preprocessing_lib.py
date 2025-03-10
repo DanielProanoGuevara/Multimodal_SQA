@@ -124,55 +124,190 @@ def z_score_standardization(data):
 
 def downsample(input_signal, orig_freq, target_freq):
     """
-    Downsamples the input signal, enforcing the Shannon-Nyquist criteria.
+    Downsamples an input signal while enforcing the Shannon-Nyquist criteria.
+
+    This function resamples the input signal to a lower sampling frequency using
+    polyphase filtering. It designs an anti-aliasing FIR low-pass filter with a
+    cutoff frequency at half the target frequency.
 
     Parameters
     ----------
     input_signal : numpy.ndarray
-        The input signal to be downsampled.
-    orig_freq : int
-        The original sampling frequency of the signal.
-    target_freq : int
-        The target sampling frequency after downsampling.
+        Array representing the input signal to be downsampled.
+    orig_freq : int or float
+        The original sampling frequency of the input signal.
+    target_freq : int or float
+        The desired sampling frequency after downsampling. Must be lower than orig_freq.
 
     Raises
     ------
     ValueError
-        The final downsampling frequency cannot be higher than the
-        original one.
+        If target_freq is not lower than orig_freq.
 
     Returns
     -------
-    downsampled_signal : numpy.ndarray
+    numpy.ndarray
         The downsampled signal.
-
     """
-    # Calculate the downsampling ratio
-    ratio = target_freq / orig_freq
+    if target_freq >= orig_freq:
+        raise ValueError(
+            "Target frequency must be lower than the original frequency for downsampling.")
 
-    # Ensure the ratio is less than 1 (downsampling)
-    if ratio >= 1.0:
-        raise ValueError("Target frequency must be less than the original"
-                         + "frequency for downsampling.")
-
-    # Calculate the greatest common divisor (GCD) to find the interpolation and
-    # decimation factors
+    # Compute the greatest common divisor to determine resampling factors.
     gcd = np.gcd(int(target_freq), int(orig_freq))
-    up = int(target_freq / gcd)
-    down = int(orig_freq / gcd)
+    up_factor = int(target_freq / gcd)
+    down_factor = int(orig_freq / gcd)
 
-    # Design a low-pass filter to act as the antialiasing filter
-    # Use firwin to create a FIR filter with a cutoff frequency at half the
-    # target sampling rate
-    numtaps = 101  # Number of taps in the FIR filter
-    cutoff = target_freq / 2.0  # Cutoff frequency of the filter
-    fir_filter = firwin(numtaps, cutoff=cutoff, fs=orig_freq)
+    # Design an anti-aliasing low-pass FIR filter.
+    # The cutoff is set to half the target frequency to satisfy the Nyquist criterion.
+    num_taps = 101
+    cutoff = target_freq / 2.0
+    fir_filter = firwin(num_taps, cutoff=cutoff, fs=orig_freq)
 
-    # Use resample_poly to apply the polyphase filtering and resampling
-    downsampled_signal = resample_poly(
-        input_signal, up, down, window=fir_filter)
+    # Resample the signal using polyphase filtering.
+    return resample_poly(input_signal, up_factor, down_factor, window=fir_filter)
 
-    return downsampled_signal
+
+def upsample(input_signal, orig_freq, target_freq):
+    """
+    Upsamples an input signal to a higher sampling frequency using polyphase filtering.
+
+    This function increases the sampling frequency of the input signal. It designs an
+    anti-imaging FIR low-pass filter with a cutoff set to the original Nyquist frequency
+    (orig_freq/2) to remove spectral images introduced during upsampling.
+
+    Parameters
+    ----------
+    input_signal : numpy.ndarray
+        Array representing the input signal to be upsampled.
+    orig_freq : int or float
+        The original sampling frequency of the input signal.
+    target_freq : int or float
+        The desired sampling frequency after upsampling. Must be higher than orig_freq.
+
+    Raises
+    ------
+    ValueError
+        If target_freq is not higher than orig_freq.
+
+    Returns
+    -------
+    numpy.ndarray
+        The upsampled signal.
+    """
+    if target_freq <= orig_freq:
+        raise ValueError(
+            "Target frequency must be higher than the original frequency for upsampling.")
+
+    # Compute the greatest common divisor to determine resampling factors.
+    gcd = np.gcd(int(target_freq), int(orig_freq))
+    up_factor = int(target_freq / gcd)
+    down_factor = int(orig_freq / gcd)
+
+    # Design an anti-imaging low-pass FIR filter.
+    # The cutoff frequency is set to the original Nyquist limit to preserve the original signal bandwidth.
+    num_taps = 101
+    cutoff = orig_freq / 2.0
+    # Note: The filter is designed with the target frequency as the sampling rate (fs) because the output signal is at target_freq.
+    fir_filter = firwin(num_taps, cutoff=cutoff, fs=target_freq)
+
+    # Resample the signal using polyphase filtering.
+    return resample_poly(input_signal, up_factor, down_factor, window=fir_filter)
+
+
+def resample_delineation(signal, original_fs, target_fs):
+    """
+    Resamples a delineation vector to match a new sampling rate.
+
+    - If downsampling, evenly removes samples without filtering.
+    - If upsampling, propagates the last known value to fill new samples.
+
+    Parameters:
+    ----------
+    signal : np.ndarray
+        The input delineation vector (1D array).
+    original_fs : float
+        The original sampling rate in Hz.
+    target_fs : float
+        The target sampling rate in Hz.
+
+    Returns:
+    -------
+    np.ndarray
+        The resampled delineation vector.
+
+    Example:
+    --------
+    >>> signal = np.array([1, 2, 3, 4, 5])
+    >>> resample_delineation_vector(signal, original_fs=100, target_fs=200)
+    array([1, 1, 2, 2, 3, 3, 4, 4, 5, 5])
+    >>> resample_delineation_vector(signal, original_fs=100, target_fs=50)
+    array([1, 3, 5])
+    """
+    original_length = len(signal)
+    target_length = int(round(original_length * (target_fs / original_fs)))
+
+    if original_length == target_length:
+        return signal.copy()  # No resampling needed
+
+    elif original_length > target_length:
+        # Downsampling: Keep evenly spaced indices
+        indices = np.linspace(0, original_length - 1, target_length, dtype=int)
+        return signal[indices]
+
+    else:
+        # Upsampling: Repeat last known value for new interpolated points
+        indices = np.linspace(0, original_length - 1, target_length, dtype=int)
+        resampled_signal = np.zeros(target_length, dtype=signal.dtype)
+
+        # Assign values, ensuring the last known value is propagated
+        last_value = signal[0]
+        for i, idx in enumerate(indices):
+            last_value = signal[idx]  # Update last known value
+            resampled_signal[i] = last_value
+
+        return resampled_signal
+
+
+def extend_intervals(intervals, direction, extend_by):
+    """
+    Extends intervals in a given direction by a specified number.
+
+    Parameters:
+    ----------
+    intervals : list of tuples
+        A list of (start_interval, end_interval) tuples.
+    direction : str
+        The direction to extend ('right' or 'left').
+    extend_by : int
+        The number by which to extend the interval.
+
+    Returns:
+    -------
+    list of tuples
+        The modified list of intervals with extended boundaries.
+
+    Example:
+    --------
+    >>> intervals = [(5, 10), (15, 20), (0, 8)]
+    >>> extend_intervals(intervals, 'right', 3)
+    [(5, 13), (15, 23), (0, 11)]
+    >>> extend_intervals(intervals, 'left', 3)
+    [(2, 10), (12, 20), (0, 8)]
+    """
+    if direction not in ['right', 'left']:
+        raise ValueError("Direction must be 'right' or 'left'.")
+
+    extended_intervals = []
+    for start, end in intervals:
+        if direction == 'right':
+            extended_intervals.append((start, end + extend_by))
+        elif direction == 'left':
+            # Ensure start is not negative
+            new_start = max(0, start - extend_by)
+            extended_intervals.append((new_start, end))
+
+    return extended_intervals
 
 
 def butterworth_filter(data, filter_topology, order, fs, fc):
