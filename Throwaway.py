@@ -41,8 +41,6 @@ import copy
 
 # %% Constants
 AVERAGE_WINDOW = 3
-SIGNAL_IDX = 704
-EXTEND_WINDOW = 8
 
 # %% Import PCG
 root_dir = r'..\DatasetCHVNGE\pcg_ulsge.pkl'
@@ -109,6 +107,10 @@ ecg_prediction_labels = copy.deepcopy(ecg_pred_labels)
 ecg_state_predictions = np.array(
     [prediction for prediction in ecg_prediction_labels], dtype=object)
 
+# %% Individual Analysis
+SIGNAL_IDX = 219
+EXTEND_WINDOW = 8
+LAMBDA_PENALTY = 0.1
 print(
     f"ULGSE, patient {ecg_df['ID'][SIGNAL_IDX]}, auscultation point {ecg_df['Auscultation_Point'][SIGNAL_IDX]}")
 
@@ -258,12 +260,17 @@ def match_intervals(ref_intervals, test_intervals, min_overlap=1):
             matches += 1
     return matches
 
+
+# %% Individual Analysis
+SIGNAL_IDX = 704
+EXTEND_WINDOW = 8
+LAMBDA_PENALTY = 0.5
+
 # %% Compute the scores for each segment
 
 
 ecg_signal = ecg_state_predictions[SIGNAL_IDX]
 pcg_signal = pcg_state_predictions[SIGNAL_IDX]
-lambda_penalty = 0.1
 min_duration = 1
 min_overlap = 1
 
@@ -284,10 +291,10 @@ match_qrs = match_intervals(qrs_extended, pcg_s1, min_overlap=min_overlap)
 match_twave = match_intervals(twave_extended, pcg_s2, min_overlap=min_overlap)
 
 # QRS should match with S1, T-wave should match with S2
-total_ecg = len(qrs_extended) + len(twave_extended)
+total_ecg = len(ecg_qrs) + len(ecg_twave)
 matches_ecg = match_qrs + match_twave
 # Apply linear penalty for missing matches
-score_ecg_to_pcg = (matches_ecg - lambda_penalty *
+score_ecg_to_pcg = (matches_ecg - LAMBDA_PENALTY *
                     (total_ecg - matches_ecg)) / total_ecg if total_ecg > 0 else 0
 
 print('Linear combination of metrics E2P: ', score_ecg_to_pcg)
@@ -296,17 +303,17 @@ print('Linear combination of metrics E2P: ', score_ecg_to_pcg)
 # Weighted Recall
 # Compute score for QRS: if no QRS intervals, assume worst match (score = 0)
 if len(qrs_extended) > 0:
-    score_qrs = (match_qrs - lambda_penalty *
-                 (len(qrs_extended) - match_qrs)) / len(qrs_extended)
+    score_qrs = (match_qrs - LAMBDA_PENALTY *
+                 (len(ecg_qrs) - match_qrs)) / len(ecg_qrs)
 else:
     score_qrs = 0
 
 # Compute score for T-wave: if no T-wave intervals, assume worst match (score = 0)
 if len(twave_extended) > 0:
-    score_twave = (match_twave - lambda_penalty *
-                   (len(twave_extended) - match_twave)) / len(twave_extended)
+    score_twave = (match_twave - LAMBDA_PENALTY *
+                   (len(ecg_twave) - match_twave)) / len(ecg_twave)
 else:
-    score_twave = 1
+    score_twave = 0
 
 # Overall ECG-to-PCG score is the minimum of the two scores to ensure both segments align well
 score_ecg_to_pcg = min(score_qrs, score_twave)
@@ -322,16 +329,48 @@ s2_extended = pplib.extend_intervals(pcg_s2, 'left', EXTEND_WINDOW)
 # Linear combination
 match_s1 = match_intervals(s1_extended, ecg_qrs, min_overlap=min_overlap)
 match_s2 = match_intervals(s2_extended, ecg_twave, min_overlap=min_overlap)
-
-
-"""Pendiente"""
-
-
 # QRS should match with S1, T-wave should match with S2
-total_ecg = len(ecg_qrs) + len(ecg_twave)
-matches_ecg = match_qrs + match_twave
-# Apply linear penalty for missing matches
-score_ecg_to_pcg = (matches_ecg - lambda_penalty *
-                    (total_ecg - matches_ecg)) / total_ecg if total_ecg > 0 else 0
+total_pcg = len(pcg_s1) + len(pcg_s2)
+matches_pcg = match_s1 + match_s2
+score_pcg_to_ecg = (matches_pcg - LAMBDA_PENALTY *
+                    (total_pcg - matches_pcg)) / total_pcg if total_pcg > 0 else 0
+print('Linear combination of metrics P2E: ', score_pcg_to_ecg)
 
-print('Linear combination of metrics E2P: ', score_ecg_to_pcg)
+# matching minima strategy
+# Weighted Recall
+# Compute score for S1: if no S1 intervals, assume worst match (score = 0)
+if len(s1_extended) > 0:
+    score_s1 = (match_s1 - LAMBDA_PENALTY *
+                (len(pcg_s1) - match_s1)) / len(pcg_s1)
+else:
+    score_s1 = 0
+
+# Compute score for S2: if no S2 intervals, assume worst match (score = 0)
+if len(s2_extended) > 0:
+    score_s2 = (match_s2 - LAMBDA_PENALTY *
+                (len(pcg_s2) - match_s2)) / len(pcg_s2)
+else:
+    score_s2 = 0
+
+# Overall PCG-to-ECG score is the minimum of the two scores to ensure both segments align well
+score_pcg_to_ecg = min(score_s1, score_s2)
+
+print('Minimum-based metrics P2E: ', score_pcg_to_ecg)
+
+# %% Cardiac Rhythm Calculation
+
+r_count = ftelib.count_segments(ecg_signal, 0)
+cardiac_rhythm_r = ftelib.calculate_bpm(r_count, len(ecg_signal))
+
+t_count = ftelib.count_segments(ecg_signal, 2)
+cardiac_rhythm_t = ftelib.calculate_bpm(t_count, len(ecg_signal))
+
+s1_count = ftelib.count_segments(pcg_signal, 0)
+cardiac_rhythm_s1 = ftelib.calculate_bpm(s1_count, len(pcg_signal))
+
+s2_count = ftelib.count_segments(pcg_signal, 2)
+cardiac_rhythm_s2 = ftelib.calculate_bpm(s2_count, len(pcg_signal))
+
+median_heart_rhythm = np.median(
+    [cardiac_rhythm_r, cardiac_rhythm_t, cardiac_rhythm_s1, cardiac_rhythm_s2])
+print("Median Cardiac Rhythm [ppm]: ", median_heart_rhythm)
