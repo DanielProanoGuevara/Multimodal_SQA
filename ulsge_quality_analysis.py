@@ -58,8 +58,10 @@ def max_temporal_modelling(seq, num_states=4):
 pcg_pred_labels = [ftelib.reverse_one_hot_encoding(
     pred) for pred in pcg_processed_predictions]
 pcg_prediction_labels = copy.deepcopy(pcg_pred_labels)
+# pcg_state_predictions = np.array(
+#     [max_temporal_modelling(prediction) for prediction in pcg_prediction_labels], dtype=object)
 pcg_state_predictions = np.array(
-    [max_temporal_modelling(prediction) for prediction in pcg_prediction_labels], dtype=object)
+    [prediction for prediction in pcg_prediction_labels], dtype=object)
 
 
 # %% Import ECG
