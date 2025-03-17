@@ -12,31 +12,13 @@ import os
 import glob
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
-from scipy.stats import norm
-import pywt
-import pydub
-import time
-import wfdb
-import sounddevice as sd
-from scipy import signal
+import matplotlib.pyplot as pltb
 import preprocessing_lib as pplib
 import feature_extraction_lib as ftelib
 import file_process_lib as importlib
 from sklearn.preprocessing import OneHotEncoder
 
-# import librosa
-# import logging
-import scipy.io
-# import scipy.signal
-# import re
-
 import pickle
-
-from scipy.io import wavfile
-
-
 import copy
 
 # %% Constants
@@ -417,8 +399,8 @@ results = []
 
 for idx in range(len(ecg_df)):
     # Retrieve signals for the current index
-    ecg_signal = ecg_df.iloc[idx]['ECG']
-    pcg_signal = pcg_df.iloc[idx]['PCG']
+    ecg_signal = ecg_state_predictions[idx]
+    pcg_signal = pcg_state_predictions[idx]
 
     # Compute alignment metrics using the defined functions
     metric_min_lin = alignment_metric_min_lin(ecg_signal, pcg_signal)
