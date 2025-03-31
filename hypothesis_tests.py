@@ -30,6 +30,11 @@ from sklearn.preprocessing import OneHotEncoder
 # import logging
 import scipy.io
 from scipy import stats
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import label_binarize, LabelEncoder
 # import scipy.signal
 # import re
 
@@ -233,7 +238,7 @@ original_stats = test_df.groupby('mSQA_min')['alignment_metric_min_lin'].agg(['m
 print("Original Groups - Mean and Variance:")
 print(original_stats)
 print()
-print("Kruskal–Wallis Test selected due to the lack of uniformity in the variances, and the imposisblity to assume a normal distribution of the data.\n")
+print("Kruskal–Wallis Test selected due to the lack of uniformity in the variances, and the impossibility to assume a normal distribution of the data.\n")
 
 # %%
 ###############################################################################
@@ -352,6 +357,80 @@ for comparison, orig_p in quant_pairwise_results:
     significance = "Significant" if corrected_p < 0.05 else "Not significant"
     print(f"{comparison}: Original p-value = {orig_p:.4e}, Bonferroni-corrected p-value = {corrected_p:.4e} -> {significance}")
 
+# %%
+# =============================================================================
+# Task 5: Multinomial Logistic Regression & AUC Evaluation
+# =============================================================================
+# We perform multinomial logistic regression for two settings:
+# 1. Using the original (unquantized) dataset: outcome = 'score' (0 to 5)
+# 2. Using the quantized dataset: outcome = 'quantized'
+# For each setting, we:
+#    - Train on the whole dataset and evaluate AUC on the same data.
+#    - Perform a 20-80 train-test split and evaluate the test AUC.
+#
+# Note: For multiclass AUC, we use roc_auc_score with multi_class='ovr'.
+#
+# ------------------------------
+# 1. Unquantized Dataset
+# ------------------------------
+print("\nTask 5: Multinomial Logistic Regression & AUC Evaluation on Unquantized Data")
 
+# Prepare features and outcome.
+X_unq = test_df[['alignment_metric_min_lin']].values
+y_unq = test_df['mSQA_min'].values  # Outcome: integers 0-5
 
+# a) Train on the whole dataset.
+model_unq = LogisticRegression(solver='lbfgs', max_iter=500)
+model_unq.fit(X_unq, y_unq)
+y_pred_proba_unq = model_unq.predict_proba(X_unq)
+# Binarize true labels for AUC computation.
+y_unq_bin = label_binarize(y_unq, classes=np.unique(y_unq))
+auc_unq = roc_auc_score(y_unq_bin, y_pred_proba_unq, multi_class='ovr')
+print("Whole Dataset:")
+print(f"  AUC: {auc_unq:.4e}")
+
+# b) 20-80 Train-Test Split
+X_train_unq, X_test_unq, y_train_unq, y_test_unq = train_test_split(
+    X_unq, y_unq, test_size=0.8, random_state=42, stratify=y_unq
+)
+model_unq_split = LogisticRegression(solver='lbfgs', max_iter=500)
+model_unq_split.fit(X_train_unq, y_train_unq)
+y_test_proba_unq = model_unq_split.predict_proba(X_test_unq)
+y_test_bin_unq = label_binarize(y_test_unq, classes=np.unique(y_unq))
+auc_unq_split = roc_auc_score(y_test_bin_unq, y_test_proba_unq, multi_class='ovr')
+print("20-80 Train-Test Split:")
+print(f"  Test AUC: {auc_unq_split:.4e}")
+
+# ------------------------------
+# 2. Quantized Dataset
+# ------------------------------
+print("\nTask 5: Multinomial Logistic Regression & AUC Evaluation on Quantized Data")
+
+# Prepare features and outcome.
+# Outcome: 'quantized' (categories: "Low_quality", "uncertain", "high_quality")
+# We need to convert string labels to numeric labels.
+le = LabelEncoder()
+y_quant = le.fit_transform(test_df['quantized'])
+X_quant = test_df[['alignment_metric_min_lin']].values
+
+# a) Train on the whole dataset.
+model_quant = LogisticRegression(solver='lbfgs', max_iter=500)
+model_quant.fit(X_quant, y_quant)
+y_pred_proba_quant = model_quant.predict_proba(X_quant)
+y_quant_bin = label_binarize(y_quant, classes=np.unique(y_quant))
+auc_quant = roc_auc_score(y_quant_bin, y_pred_proba_quant, multi_class='ovr')
+print("Whole Dataset:")
+print(f"  AUC: {auc_quant:.4e}")
+
+# b) 20-80 Train-Test Split
+X_train_quant, X_test_quant, y_train_quant, y_test_quant = train_test_split(
+    X_quant, y_quant, test_size=0.8, random_state=42, stratify=y_quant
+)
+model_quant_split = LogisticRegression(solver='lbfgs', max_iter=500)
+model_quant_split.fit(X_train_quant, y_train_quant)
+y_test_proba_quant = model_quant_split.predict_proba(X_test_quant)
+y_test_bin_quant = label_binarize(y_test_quant, classes=np.unique(y_quant))
+auc_quant_split = roc_auc_score(y_test_bin_quant, y_test_proba_quant, multi_class='ovr')
+print("20-80 Train-Test Split:")
+print(f"  Test AUC: {auc_quant_split:.4e}")
 

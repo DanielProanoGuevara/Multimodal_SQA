@@ -1,0 +1,61 @@
+Statistical Analysis: Correlations between mSQA_min and alignment metrics
+
+Correlation results for alignment_metric_min_lin:
+  Pearson correlation: 0.593 (p-value: 1.67e-52)
+  Kendall tau correlation: 0.498 (p-value: 6.52e-54)
+  Spearman correlation: 0.635 (p-value: 2.68e-62)
+
+------------------------------------------------------------------
+
+Hypothesis tests conducted exclusively on the min_lin metric.
+
+Original Groups - Mean and Variance:
+   mSQA_min      mean       var
+0       0.0  0.305245  0.091544
+1       1.0  0.627348  0.071429
+2       2.0  0.760580  0.051544
+3       3.0  0.798595  0.045640
+4       4.0  0.899621  0.015228
+5       5.0  0.906227  0.009643
+
+Kruskal–Wallis Test selected instead of ANOVA due to the lack of uniformity in the variances, and the impossibility to assume a normal distribution of the data.
+
+Task 1: Kruskal–Wallis Test (Original Groups)
+H-statistic: 2.1964e+02
+p-value: 1.7752e-45
+
+# Note: The Kruskal–Wallis test is non-parametric and suitable for unbalanced groups.
+
+Task 2: Pairwise T-tests with Bonferroni Correction (Original Groups)
+Total pairwise comparisons: 15
+0.0 vs 1.0: Original p-value = 7.1303e-23, Bonferroni-corrected p-value = 1.0695e-21 -> Significant
+0.0 vs 2.0: Original p-value = 3.5847e-27, Bonferroni-corrected p-value = 5.3771e-26 -> Significant
+0.0 vs 3.0: Original p-value = 5.3980e-36, Bonferroni-corrected p-value = 8.0970e-35 -> Significant
+0.0 vs 4.0: Original p-value = 8.9136e-33, Bonferroni-corrected p-value = 1.3370e-31 -> Significant
+0.0 vs 5.0: Original p-value = 1.6976e-05, Bonferroni-corrected p-value = 2.5463e-04 -> Significant
+1.0 vs 2.0: Original p-value = 2.1194e-04, Bonferroni-corrected p-value = 3.1792e-03 -> Significant
+1.0 vs 3.0: Original p-value = 3.9985e-07, Bonferroni-corrected p-value = 5.9977e-06 -> Significant
+1.0 vs 4.0: Original p-value = 2.9743e-13, Bonferroni-corrected p-value = 4.4615e-12 -> Significant
+1.0 vs 5.0: Original p-value = 1.1151e-03, Bonferroni-corrected p-value = 1.6726e-02 -> Significant
+2.0 vs 3.0: Original p-value = 2.9806e-01, Bonferroni-corrected p-value = 1.0000e+00 -> Not significant
+2.0 vs 4.0: Original p-value = 1.8662e-04, Bonferroni-corrected p-value = 2.7993e-03 -> Significant
+2.0 vs 5.0: Original p-value = 2.3739e-02, Bonferroni-corrected p-value = 3.5608e-01 -> Not significant
+3.0 vs 4.0: Original p-value = 3.1133e-03, Bonferroni-corrected p-value = 4.6700e-02 -> Significant
+3.0 vs 5.0: Original p-value = 7.0215e-02, Bonferroni-corrected p-value = 1.0000e+00 -> Not significant
+4.0 vs 5.0: Original p-value = 8.9801e-01, Bonferroni-corrected p-value = 1.0000e+00 -> Not significant
+
+Quantized Groups - Mean and Variance:
+      quantized      mean       var
+0   Low_quality  0.437876  0.108238
+1  high_quality  0.900593  0.014095
+2     uncertain  0.780872  0.048423
+
+Task 3: Kruskal–Wallis Test (Quantized Groups)
+H-statistic: 1.5372e+02
+p-value: 4.1736e-34
+
+Task 4: Pairwise T-tests with Bonferroni Correction (Quantized Groups)
+Total quantized pairwise comparisons: 3
+Low_quality vs high_quality: Original p-value = 5.9258e-31, Bonferroni-corrected p-value = 1.7777e-30 -> Significant
+Low_quality vs uncertain: Original p-value = 3.5156e-35, Bonferroni-corrected p-value = 1.0547e-34 -> Significant
+high_quality vs uncertain: Original p-value = 2.9361e-05, Bonferroni-corrected p-value = 8.8084e-05 -> Significant
