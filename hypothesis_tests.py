@@ -434,3 +434,7 @@ auc_quant_split = roc_auc_score(y_test_bin_quant, y_test_proba_quant, multi_clas
 print("20-80 Train-Test Split:")
 print(f"  Test AUC: {auc_quant_split:.4e}")
 
+# comparar as metricas todas e passar no logistic regression como multiples dimensões,
+# En vez de fazer 20-80 fazer 5-folder cross validation
+# Alem da AUC, matriz de confussão final.
+# Matriz de confussão agregada do dataset todo
