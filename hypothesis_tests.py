@@ -31,10 +31,11 @@ from sklearn.preprocessing import OneHotEncoder
 import scipy.io
 from scipy import stats
 
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegressionCV
+from sklearn.metrics import roc_auc_score, confusion_matrix
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import label_binarize, LabelEncoder
+
 # import scipy.signal
 # import re
 
@@ -228,7 +229,7 @@ print("\n------------------------------------------------------------------\n")
 print("Hypothesis tests conducted exclussively on the min_lin metric.\n")
 # Hypothesis testing -- Best reults min-lin lambda = 0.1 unsequenced
 # Create Final testing df
-test_df = merged_df[['mSQA_min', 'alignment_metric_min_lin']].dropna()
+test_df = merged_df[['mSQA_min', 'alignment_metric_min_lin', 'alignment_metric_avg_lin', 'alignment_metric_min_min', 'alignment_metric_avg_min']].dropna()
 
 ###############################################################################
 # Calculate Mean and Variance for Original Groups
@@ -358,6 +359,7 @@ for comparison, orig_p in quant_pairwise_results:
     print(f"{comparison}: Original p-value = {orig_p:.4e}, Bonferroni-corrected p-value = {corrected_p:.4e} -> {significance}")
 
 # %%
+
 # =============================================================================
 # Task 5: Multinomial Logistic Regression & AUC Evaluation
 # =============================================================================
@@ -373,14 +375,20 @@ for comparison, orig_p in quant_pairwise_results:
 # ------------------------------
 # 1. Unquantized Dataset
 # ------------------------------
+
+# Define the four features to be used in the multinomial regression.
+features = ['alignment_metric_min_lin', 'alignment_metric_avg_lin', 
+            'alignment_metric_min_min', 'alignment_metric_avg_min']
+
+
 print("\nTask 5: Multinomial Logistic Regression & AUC Evaluation on Unquantized Data")
 
 # Prepare features and outcome.
-X_unq = test_df[['alignment_metric_min_lin']].values
+X_unq = test_df[features].values
 y_unq = test_df['mSQA_min'].values  # Outcome: integers 0-5
 
 # a) Train on the whole dataset.
-model_unq = LogisticRegression(solver='lbfgs', max_iter=500)
+model_unq = LogisticRegressionCV(cv=5, class_weight='balanced', max_iter=1000)
 model_unq.fit(X_unq, y_unq)
 y_pred_proba_unq = model_unq.predict_proba(X_unq)
 # Binarize true labels for AUC computation.
@@ -389,17 +397,11 @@ auc_unq = roc_auc_score(y_unq_bin, y_pred_proba_unq, multi_class='ovr')
 print("Whole Dataset:")
 print(f"  AUC: {auc_unq:.4e}")
 
-# b) 20-80 Train-Test Split
-X_train_unq, X_test_unq, y_train_unq, y_test_unq = train_test_split(
-    X_unq, y_unq, test_size=0.8, random_state=42, stratify=y_unq
-)
-model_unq_split = LogisticRegression(solver='lbfgs', max_iter=500)
-model_unq_split.fit(X_train_unq, y_train_unq)
-y_test_proba_unq = model_unq_split.predict_proba(X_test_unq)
-y_test_bin_unq = label_binarize(y_test_unq, classes=np.unique(y_unq))
-auc_unq_split = roc_auc_score(y_test_bin_unq, y_test_proba_unq, multi_class='ovr')
-print("20-80 Train-Test Split:")
-print(f"  Test AUC: {auc_unq_split:.4e}")
+# Compute and print the confusion matrix for the unquantized dataset.
+y_pred_unq = model_unq.predict(X_unq)
+cm_unq = confusion_matrix(y_unq, y_pred_unq)
+print("Confusion Matrix for Unquantized Data:")
+print(cm_unq)
 
 # ------------------------------
 # 2. Quantized Dataset
@@ -411,10 +413,10 @@ print("\nTask 5: Multinomial Logistic Regression & AUC Evaluation on Quantized D
 # We need to convert string labels to numeric labels.
 le = LabelEncoder()
 y_quant = le.fit_transform(test_df['quantized'])
-X_quant = test_df[['alignment_metric_min_lin']].values
+X_quant = test_df[features].values
 
 # a) Train on the whole dataset.
-model_quant = LogisticRegression(solver='lbfgs', max_iter=500)
+model_quant = LogisticRegressionCV(cv=5, class_weight='balanced', max_iter=1000)
 model_quant.fit(X_quant, y_quant)
 y_pred_proba_quant = model_quant.predict_proba(X_quant)
 y_quant_bin = label_binarize(y_quant, classes=np.unique(y_quant))
@@ -422,19 +424,11 @@ auc_quant = roc_auc_score(y_quant_bin, y_pred_proba_quant, multi_class='ovr')
 print("Whole Dataset:")
 print(f"  AUC: {auc_quant:.4e}")
 
-# b) 20-80 Train-Test Split
-X_train_quant, X_test_quant, y_train_quant, y_test_quant = train_test_split(
-    X_quant, y_quant, test_size=0.8, random_state=42, stratify=y_quant
-)
-model_quant_split = LogisticRegression(solver='lbfgs', max_iter=500)
-model_quant_split.fit(X_train_quant, y_train_quant)
-y_test_proba_quant = model_quant_split.predict_proba(X_test_quant)
-y_test_bin_quant = label_binarize(y_test_quant, classes=np.unique(y_quant))
-auc_quant_split = roc_auc_score(y_test_bin_quant, y_test_proba_quant, multi_class='ovr')
-print("20-80 Train-Test Split:")
-print(f"  Test AUC: {auc_quant_split:.4e}")
+# Compute and print the confusion matrix for the quantized dataset.
+y_pred_quant = model_quant.predict(X_quant)
+cm_quant = confusion_matrix(y_quant, y_pred_quant)
+print("Confusion Matrix for Quantized Data:")
+print(cm_quant)
 
-# comparar as metricas todas e passar no logistic regression como multiples dimensões,
-# En vez de fazer 20-80 fazer 5-folder cross validation
-# Alem da AUC, matriz de confussão final.
-# Matriz de confussão agregada do dataset todo
+
+# %%
