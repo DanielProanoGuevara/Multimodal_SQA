@@ -54,13 +54,3 @@ def import_physionet_2016(signals_path, labels_path):
 
     return [samplerate, original_data, propagated_labels]
 
-
-def import_CHVNGE_PCG(pcg_path):
-    a = pydub.AudioSegment.from_mp3(pcg_path)
-    PCG_rate = a.frame_rate
-    PCG = np.array(a.get_array_of_samples())
-    PCG_bit_width = 16
-    PCG_resolution = (2 ** PCG_bit_width)-1
-    # Normalize full-scale
-    PCG_v = (PCG) / (PCG_resolution)  # uint 16 bits (scale -0.5;0.5)
-    return [PCG_rate, PCG_v]
