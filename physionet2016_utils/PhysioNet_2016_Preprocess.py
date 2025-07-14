@@ -51,7 +51,7 @@ paired_files = [(patient_id, wav_dict[patient_id], mat_dict[patient_id])
 
 
 # Randomize the paired files
-np.random.shuffle(paired_files)
+# np.random.shuffle(paired_files)
 # Sort the paired files by patient ID
 # paired_files.sort(key=lambda x: x[0])
 
@@ -63,11 +63,14 @@ train_files = paired_files[:train_split]
 # test_files = paired_files[train_split:test_split]
 validation_files = paired_files[train_split:]
 
-
+print("Got import all things")
 # Function to process files and create a DataFrame
+
+
 def process_files(paired_files):
 
     # Define the minimal duration in seconds
+    print("Entered Processing")
     MIN_DURATION = 1.5
 
     # Initialize lists to store data
@@ -94,34 +97,34 @@ def process_files(paired_files):
             resample = pplib.downsample(z_norm, samplerate, 1000)
 
             # Schmidt despiking
-            despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
+            # despiked_signal = pplib.schmidt_spike_removal(resample, 1000)
 
             # wavelet denoising
-            wavelet_denoised = pplib.wavelet_denoise(
-                despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[-1, 1, 2])
+            # wavelet_denoised = pplib.wavelet_denoise(
+            #     despiked_signal, 5, wavelet_family='coif4', risk_estimator=pplib.val_SURE_threshold, shutdown_bands=[-1, 1, 2])
 
             # Butterworth bandpass filtering
-            filtered_pcg = pplib.butterworth_filter(
-                wavelet_denoised, 'bandpass', 4, 1000, [15, 450])
+            # filtered_pcg = pplib.butterworth_filter(
+            #     wavelet_denoised, 'bandpass', 4, 1000, [15, 450])
 
             # Feature Extraction
             # Homomorphic Envelope
             homomorphic = ftelib.homomorphic_envelope(
-                filtered_pcg, 1000, 50)
+                resample, 1000, 50)
 
             # CWT Scalogram Envelope
-            cwt_morl = ftelib.c_wavelet_envelope(filtered_pcg, 1000, 50,
+            cwt_morl = ftelib.c_wavelet_envelope(resample, 1000, 50,
                                                  interest_frequencies=[40, 200])
 
             cwt_mexh = ftelib.c_wavelet_envelope(
-                filtered_pcg, 1000, 50, wv_family='mexh',
+                resample, 1000, 50, wv_family='mexh',
                 interest_frequencies=[40, 200])
 
             # 3rd decomposition DWT
             # dwt = ftelib.d_wavelet_envelope(wavelet_denoised, 1000, 50)
 
             # Hilbert Envelope
-            hilbert_env = ftelib.hilbert_envelope(filtered_pcg, 1000, 50)
+            hilbert_env = ftelib.hilbert_envelope(resample, 1000, 50)
 
             # Label Processing
             desired_order = ['S1', 'systole', 'S2', 'diastole']
@@ -165,6 +168,7 @@ def process_files(paired_files):
         'Features': features_list,
         'Labels': labels_list
     })
+    print("dataframe created")
     return df
 
 
@@ -172,6 +176,8 @@ def process_files(paired_files):
 train_df = process_files(train_files)
 # test_df = process_files(test_files)
 validation_df = process_files(validation_files)
+
+print("processed all files")
 
 # Modify the DataFrame to store each feature separately
 train_df['Homomorphic'] = train_df['Features'].apply(lambda x: x[:, 0])
@@ -195,9 +201,9 @@ validation_df['Hilbert_Env'] = validation_df['Features'].apply(
 validation_df = validation_df.drop(columns=['Features'])
 
 # Save the DataFrames to pickle files
-train_pickle_path = r'..\train_physionet_2016.pkl'
+train_pickle_path = r'..\train_physionet_2016_nosp.pkl'
 # test_pickle_path = r'..\test_physionet_2016.pkl'
-validation_pickle_path = r'..\validation_physionet_2016.pkl'
+validation_pickle_path = r'..\validation_physionet_2016_nosp.pkl'
 
 train_df.to_pickle(train_pickle_path)
 print(f"Train DataFrame saved to {train_pickle_path}")

@@ -197,7 +197,8 @@ def alignment_metric_min_lin(ecg_signal, pcg_signal, lambda_penalty=0.5, min_dur
 
     # Overall metric is the minima of both directional scores
     overall_metric = min(score_ecg_to_pcg, score_pcg_to_ecg)
-    if overall_metric < 0 : overall_metric = 0
+    if overall_metric < 0:
+        overall_metric = 0
     return overall_metric
 
 
@@ -247,7 +248,8 @@ def alignment_metric_avg_lin(ecg_signal, pcg_signal, lambda_penalty=0.5, min_dur
 
     # Overall metric is the average of both directional scores
     overall_metric = 0.5 * (score_ecg_to_pcg + score_pcg_to_ecg)
-    if overall_metric < 0 : overall_metric = 0
+    if overall_metric < 0:
+        overall_metric = 0
     return overall_metric
 
 
@@ -320,7 +322,8 @@ def alignment_metric_min_min(ecg_signal, pcg_signal, lambda_penalty=0.1, min_dur
 
     # Overall metric is the minima of both directional scores
     overall_metric = min(score_ecg_to_pcg, score_pcg_to_ecg)
-    if overall_metric < 0 : overall_metric = 0
+    if overall_metric < 0:
+        overall_metric = 0
     return overall_metric
 
 
@@ -393,7 +396,8 @@ def alignment_metric_avg_min(ecg_signal, pcg_signal, lambda_penalty=0.5, min_dur
 
     # Overall metric is the average of both directional scores
     overall_metric = 0.5 * (score_ecg_to_pcg + score_pcg_to_ecg)
-    if overall_metric < 0 : overall_metric = 0
+    if overall_metric < 0:
+        overall_metric = 0
     return overall_metric
 
 
@@ -409,10 +413,14 @@ for idx in range(len(ecg_df)):
     pcg_signal = pcg_state_predictions[idx]
 
     # Compute alignment metrics using the defined functions
-    metric_min_lin = alignment_metric_min_lin(ecg_signal, pcg_signal, lambda_penalty=0.1)
-    metric_avg_lin = alignment_metric_avg_lin(ecg_signal, pcg_signal, lambda_penalty=0.1)
-    metric_min_min = alignment_metric_min_min(ecg_signal, pcg_signal, lambda_penalty=0.1)
-    metric_avg_min = alignment_metric_avg_min(ecg_signal, pcg_signal, lambda_penalty=0.1)
+    metric_min_lin = alignment_metric_min_lin(
+        ecg_signal, pcg_signal, lambda_penalty=0.1)
+    metric_avg_lin = alignment_metric_avg_lin(
+        ecg_signal, pcg_signal, lambda_penalty=0.1)
+    metric_min_min = alignment_metric_min_min(
+        ecg_signal, pcg_signal, lambda_penalty=0.1)
+    metric_avg_min = alignment_metric_avg_min(
+        ecg_signal, pcg_signal, lambda_penalty=0.1)
 
     # Retrieve metadata; fallback to index if columns are missing
     row_id = ecg_df.iloc[idx]['ID'] if 'ID' in ecg_df.columns else idx

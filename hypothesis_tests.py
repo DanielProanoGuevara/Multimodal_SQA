@@ -184,7 +184,7 @@ if plot_df.empty:
 #     # Display the figure
 #     plt.show()
 
-fig, ax = plt.subplots(figsize=(3.4, 3), )
+fig, ax = plt.subplots(figsize=(4, 4), )
 data = []
 for category in mSQA_min_categories:
     # Select rows where mSQA_min equals the current category, then extract the metric values
@@ -196,10 +196,11 @@ ax.set_xticks(range(1, len(mSQA_min_categories) + 1))
 ax.set_xticklabels(mSQA_min_categories)
 ax.set_xlabel("mSQA_min Category")
 ax.set_ylabel('SQI min lin')
-ax.set_title("Manual SQI Groups")
+ax.set_title("SQI with $\lambda = 0.1$")
 ax.grid(True)
 plt.tight_layout()
 plt.show()
+# plt.savefig('SQI lambda 01.pdf', format='pdf', dpi=900)
 
 
 # Statistical Analysis: Correlations
@@ -257,13 +258,15 @@ print("\n------------------------------------------------------------------\n")
 print("Hypothesis tests conducted exclussively on the min_lin metric.\n")
 # Hypothesis testing -- Best reults min-lin lambda = 0.1 unsequenced
 # Create Final testing df
-test_df = merged_df[['mSQA_min', 'alignment_metric_min_lin', 'alignment_metric_avg_lin', 'alignment_metric_min_min', 'alignment_metric_avg_min']].dropna()
+test_df = merged_df[['mSQA_min', 'alignment_metric_min_lin', 'alignment_metric_avg_lin',
+                     'alignment_metric_min_min', 'alignment_metric_avg_min']].dropna()
 
 ###############################################################################
 # Calculate Mean and Variance for Original Groups
 ###############################################################################
 # Group by 'score' and compute mean and variance.
-original_stats = test_df.groupby('mSQA_min')['alignment_metric_min_lin'].agg(['mean', 'var']).reset_index()
+original_stats = test_df.groupby('mSQA_min')['alignment_metric_min_lin'].agg([
+    'mean', 'var']).reset_index()
 print("Original Groups - Mean and Variance:")
 print(original_stats)
 print()
@@ -274,10 +277,11 @@ print("Kruskal–Wallis Test selected due to the lack of uniformity in the varia
 # Task 1: Kruskal–Wallis Test (Original Groups)
 ###############################################################################
 # Group the data by the 'score' column.
-# Note: The Kruskal–Wallis test is a non-parametric method which does not assume normality 
+# Note: The Kruskal–Wallis test is a non-parametric method which does not assume normality
 # and is robust to unbalanced group sizes.
 unique_groups = sorted(test_df['mSQA_min'].unique())
-group_data_list = [test_df[test_df['mSQA_min'] == grp]['alignment_metric_min_lin'] for grp in unique_groups]
+group_data_list = [test_df[test_df['mSQA_min'] == grp]
+                   ['alignment_metric_min_lin'] for grp in unique_groups]
 
 # Perform the Kruskal–Wallis test for independent samples.
 H_stat, p_val = stats.kruskal(*group_data_list)
@@ -304,8 +308,10 @@ for i in range(len(unique_groups)):
     for j in range(i + 1, len(unique_groups)):
         grp1 = unique_groups[i]
         grp2 = unique_groups[j]
-        data1 = test_df[test_df['mSQA_min'] == grp1]['alignment_metric_min_lin']
-        data2 = test_df[test_df['mSQA_min'] == grp2]['alignment_metric_min_lin']
+        data1 = test_df[test_df['mSQA_min'] ==
+                        grp1]['alignment_metric_min_lin']
+        data2 = test_df[test_df['mSQA_min'] ==
+                        grp2]['alignment_metric_min_lin']
         t_stat, p_val_pair = stats.ttest_ind(data1, data2, equal_var=False)
         pairwise_results.append((f"{grp1} vs {grp2}", p_val_pair))
         num_comparisons += 1
@@ -338,14 +344,16 @@ choices = ["low_quality", "uncertain", "high_quality"]
 test_df['quantized'] = np.select(conditions, choices, default=np.nan)
 
 # Calculate Mean and Variance for Quantized Groups
-quantized_stats = test_df.groupby('quantized')['alignment_metric_min_lin'].agg(['mean', 'var']).reset_index()
+quantized_stats = test_df.groupby('quantized')['alignment_metric_min_lin'].agg([
+    'mean', 'var']).reset_index()
 print("\nQuantized Groups - Mean and Variance:")
 print(quantized_stats)
 print()
 
 # Group the data by the new 'quantized' column.
 unique_quant = sorted(test_df['quantized'].unique())
-quant_group_data_list = [test_df[test_df['quantized'] == grp]['alignment_metric_min_lin'] for grp in unique_quant]
+quant_group_data_list = [test_df[test_df['quantized'] == grp]
+                         ['alignment_metric_min_lin'] for grp in unique_quant]
 
 # Perform the Kruskal–Wallis test on the quantized groups.
 H_stat_quant, p_val_quant = stats.kruskal(*quant_group_data_list)
@@ -372,10 +380,12 @@ ax.set_xticklabels(quantized_labels)
 
 # Set axis labels and title
 ax.set_ylabel("SQI min lin")
+ax.set_title("Relabeled SQI Distribution")
 ax.grid(True)
-plt.gcf().set_dpi(600)
 plt.tight_layout()
 plt.show()
+# plt.savefig('SQI relabled.pdf', format='pdf', dpi=900)
+
 # %%
 ###############################################################################
 # Task 4: Pairwise T-tests with Bonferroni Correction (Quantized Groups)
@@ -391,8 +401,10 @@ for i in range(len(unique_quant)):
     for j in range(i + 1, len(unique_quant)):
         grp1 = unique_quant[i]
         grp2 = unique_quant[j]
-        data1 = test_df[test_df['quantized'] == grp1]['alignment_metric_min_lin']
-        data2 = test_df[test_df['quantized'] == grp2]['alignment_metric_min_lin']
+        data1 = test_df[test_df['quantized'] ==
+                        grp1]['alignment_metric_min_lin']
+        data2 = test_df[test_df['quantized'] ==
+                        grp2]['alignment_metric_min_lin']
         t_stat, p_val_pair = stats.ttest_ind(data1, data2, equal_var=False)
         quant_pairwise_results.append((f"{grp1} vs {grp2}", p_val_pair))
         num_quant_comparisons += 1
@@ -425,24 +437,28 @@ def summarize_coefficients(model, feature_names, label_encoder=None):
         print(f"  {fname:30s}: {score:.4f}")
     best_idx = np.argmax(abs_mean)
     print(f"\nMost relevant feature: {feature_names[best_idx]}")
-    
-    
+
+
 def compute_permutation_importance(model, X, y, feature_names, title="Permutation Importance"):
     """
     Computes permutation importance and prints sorted results.
     """
     print(f"\n--- {title} ---")
-    result = permutation_importance(model, X, y, n_repeats=30, random_state=42, n_jobs=-1)
+    result = permutation_importance(
+        model, X, y, n_repeats=30, random_state=42, n_jobs=-1)
 
     importances = result.importances_mean
     std = result.importances_std
     indices = np.argsort(importances)[::-1]
 
     for idx in indices:
-        print(f"{feature_names[idx]:30s} | Importance: {importances[idx]:.4f} ± {std[idx]:.4f}")
+        print(
+            f"{feature_names[idx]:30s} | Importance: {importances[idx]:.4f} ± {std[idx]:.4f}")
 
     best_idx = indices[0]
-    print(f"\nMost relevant input: {feature_names[best_idx]} (Permutation-based)")
+    print(
+        f"\nMost relevant input: {feature_names[best_idx]} (Permutation-based)")
+
 
 # -----------------------------
 # Prepare data and features
@@ -465,7 +481,8 @@ model_unq.fit(X_unq, y_unq)
 
 y_pred_unq = model_unq.predict(X_unq)
 y_proba_unq = model_unq.predict_proba(X_unq)
-auc_unq = roc_auc_score(label_binarize(y_unq, classes=np.unique(y_unq)), y_proba_unq, multi_class='ovr')
+auc_unq = roc_auc_score(label_binarize(
+    y_unq, classes=np.unique(y_unq)), y_proba_unq, multi_class='ovr')
 print(f"  AUC (Unquantized): {auc_unq:.4f}")
 
 disp = ConfusionMatrixDisplay(confusion_matrix=confusion_matrix(y_unq, y_pred_unq),
@@ -477,7 +494,8 @@ plt.tight_layout()
 plt.show()
 
 summarize_coefficients(model_unq, features)
-compute_permutation_importance(model_unq, X_unq, y_unq, features, title="Unquantized Permutation Importance")
+compute_permutation_importance(
+    model_unq, X_unq, y_unq, features, title="Unquantized Permutation Importance")
 
 
 # -----------------------------
@@ -491,9 +509,9 @@ model_quant.fit(X_quant, y_quant)
 y_pred_quant = model_quant.predict(X_quant)
 y_proba_quant = model_quant.predict_proba(X_quant)
 
-auc_quant = roc_auc_score(label_binarize(y_quant, classes=np.unique(y_quant)), y_proba_quant, multi_class='ovr')
+auc_quant = roc_auc_score(label_binarize(
+    y_quant, classes=np.unique(y_quant)), y_proba_quant, multi_class='ovr')
 print(f"  AUC (Unquantized): {auc_unq:.4f}")
-
 
 
 # Decode to string labels for presentation
@@ -508,21 +526,21 @@ cm_percent = cm / cm.sum(axis=1, keepdims=True) * 100
 cm_percent = np.int8(cm_percent)
 
 # Plot
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(4, 4))
 sns.heatmap(cm_percent, annot=True, fmt="d", cmap="Blues", cbar=False,
             xticklabels=quantized_labels, yticklabels=quantized_labels, ax=ax)
 
 ax.set_xlabel("Predicted Label")
 ax.set_ylabel("True Label")
+ax.set_title("Confusion Matrix of min_lin")
 plt.tight_layout()
-plt.gcf().set_dpi(600)
 plt.show()
-
-
+# plt.savefig('CM_SQI_relabled.pdf', format='pdf', dpi=900)
 
 
 summarize_coefficients(model_quant, features)
-compute_permutation_importance(model_quant, X_quant, y_quant, features, title="Quantized Permutation Importance")
+compute_permutation_importance(
+    model_quant, X_quant, y_quant, features, title="Quantized Permutation Importance")
 
 
 # %%
@@ -535,7 +553,8 @@ print("\nStatistical Analysis: Correlations between quantized labels and alignme
 # Encode string labels as ordinal integers for correlation
 quant_corr_df = test_df[['quantized'] + alignment_metrics].dropna()
 le_corr = LabelEncoder()
-quant_corr_df['quantized_encoded'] = le_corr.fit_transform(quant_corr_df['quantized'])
+quant_corr_df['quantized_encoded'] = le_corr.fit_transform(
+    quant_corr_df['quantized'])
 
 for metric in alignment_metrics:
     metric_vals = quant_corr_df[metric]
@@ -561,14 +580,17 @@ for metric in alignment_metrics:
 
     print(f"\nCorrelation results for {metric}:")
     if pearson_corr is not None:
-        print(f"  Pearson correlation: {pearson_corr:.3f} (p-value: {p_pearson:.3g})")
+        print(
+            f"  Pearson correlation: {pearson_corr:.3f} (p-value: {p_pearson:.3g})")
     else:
         print("  Pearson correlation: Error in computation.")
     if kendall_corr is not None:
-        print(f"  Kendall tau correlation: {kendall_corr:.3f} (p-value: {p_kendall:.3g})")
+        print(
+            f"  Kendall tau correlation: {kendall_corr:.3f} (p-value: {p_kendall:.3g})")
     else:
         print("  Kendall tau correlation: Error in computation.")
     if spearman_corr is not None:
-        print(f"  Spearman correlation: {spearman_corr:.3f} (p-value: {p_spearman:.3g})")
+        print(
+            f"  Spearman correlation: {spearman_corr:.3f} (p-value: {p_spearman:.3g})")
     else:
         print("  Spearman correlation: Error in computation.")

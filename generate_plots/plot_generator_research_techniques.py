@@ -8,6 +8,24 @@ Created on Fri Jul 12 11:16:31 2024
 # %%
 # Imports
 
+from scipy import signal
+import sounddevice as sd
+import wfdb
+import time
+import pydub
+import pywt
+from scipy.stats import norm
+from matplotlib.gridspec import GridSpec
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+import glob
+import preprocessing_lib as pplib
+import feature_extraction_lib as ftelib
+import file_process_lib as importlib
+import os
+import sys
+
 import copy
 from scipy.stats import pearsonr, kendalltau, spearmanr
 from scipy.io import wavfile
@@ -15,23 +33,6 @@ import pickle
 from scipy import stats
 import scipy.io
 from sklearn.preprocessing import OneHotEncoder
-import file_process_lib as importlib
-import feature_extraction_lib as ftelib
-import preprocessing_lib as pplib
-import os
-import sys
-import glob
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
-from scipy.stats import norm
-import pywt
-import pydub
-import time
-import wfdb
-import sounddevice as sd
-from scipy import signal
 
 # Get the absolute path of the mother folder
 origi_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -173,48 +174,65 @@ ulsge = UlsgeAccessor(
 # %% Create plots
 patient_id = 6
 
+# sampling frequencies (adjust these to your actual values)
+fs_ecg = 500     # samples per second for ECG
+fs_pcg = 3000      # samples per second for PCG
+
 # prepare plot
-fig, axes = plt.subplots(4, 2, figsize=(8, 8))
+fig, axes = plt.subplots(4, 2, figsize=(12, 6))
 fig.suptitle(f'Patient {patient_id}', fontsize=14)
 
-# Row-wise plotting (row, column)
-axes[0, 0].plot(ulsge.get_ecg(patient_id, 'AV')[:3000])
-axes[0, 0].set_title('ECG - AV')
+# helper to plot with time axis
 
-axes[0, 1].plot(ulsge.get_ecg(patient_id, 'PV')[:3000])
-axes[0, 1].set_title('ECG - PV')
 
-axes[1, 0].plot(ulsge.get_pcg(patient_id, 'AV')[:18000])
-axes[1, 0].set_title('PCG - AV')
+def plot_with_time(ax, signal, fs, title, color=None):
+    t = np.arange(len(signal)) / fs
+    ax.plot(t, signal, color=color)
+    ax.set_title(title)
 
-axes[1, 1].plot(ulsge.get_pcg(patient_id, 'PV')[:18000])
-axes[1, 1].set_title('PCG - PV')
 
-axes[2, 0].plot(ulsge.get_ecg(patient_id, 'TV')[:3000])
-axes[2, 0].set_title('ECG - TV')
+# Row-wise plotting
+plot_with_time(axes[0, 0], ulsge.get_ecg(
+    patient_id, 'AV')[:3000], fs_ecg, 'ECG – AV')
+plot_with_time(axes[0, 1], ulsge.get_ecg(
+    patient_id, 'PV')[:3000], fs_ecg, 'ECG – PV')
 
-axes[2, 1].plot(ulsge.get_ecg(patient_id, 'MV')[:3000])
-axes[2, 1].set_title('ECG - MV')
+plot_with_time(axes[1, 0], ulsge.get_pcg(
+    patient_id, 'AV')[:18000], fs_pcg, 'PCG – AV', 'tab:orange')
+plot_with_time(axes[1, 1], ulsge.get_pcg(
+    patient_id, 'PV')[:18000], fs_pcg, 'PCG – PV', 'tab:orange')
 
-axes[3, 0].plot(ulsge.get_pcg(patient_id, 'TV')[:18000])
-axes[3, 0].set_title('PCG - TV')
+plot_with_time(axes[2, 0], ulsge.get_ecg(
+    patient_id, 'TV')[:3000], fs_ecg, 'ECG – TV')
+plot_with_time(axes[2, 1], ulsge.get_ecg(
+    patient_id, 'MV')[:3000], fs_ecg, 'ECG – MV')
 
-axes[3, 1].plot(ulsge.get_pcg(patient_id, 'MV')[:18000])
-axes[3, 1].set_title('PCG - MV')
+plot_with_time(axes[3, 0], ulsge.get_pcg(
+    patient_id, 'TV')[:18000], fs_pcg, 'PCG – TV', 'tab:orange')
+plot_with_time(axes[3, 1], ulsge.get_pcg(
+    patient_id, 'MV')[:18000], fs_pcg, 'PCG – MV', 'tab:orange')
 
-# Format
-for ax in axes.flat:
-    ax.tick_params(axis='x', labelbottom=False)
-    ax.tick_params(axis='y', labelleft=False)
-    ax.set_xlabel('')
-    ax.set_ylabel('')
-    ax.grid(True)
+# Format ticks: only bottom row x-labels, only left column y-labels
+for i, row in enumerate(axes):
+    for j, ax in enumerate(row):
+        # x ticks only on bottom row
+        show_x = (i == axes.shape[0] - 1)
+        ax.tick_params(axis='x', labelbottom=show_x)
+        if show_x:
+            ax.set_xlabel('Time (s)')
+
+        # y ticks only on left column
+        show_y = (j == 0)
+        ax.tick_params(axis='y', labelleft=show_y)
+        if show_y:
+            ax.set_ylabel('Amplitude')
+
+        ax.grid(True)
 
 plt.tight_layout()
 
 # Save to PDF at high resolution
 plt.savefig('auscultation_points_all.pdf', format='pdf', dpi=900)
-
 plt.show()
 # %% Quality examples
 
@@ -238,43 +256,47 @@ pcg_pairs = [
 ]
 
 n_rows = len(ecg_pairs)
-fig, axes = plt.subplots(n_rows, 2, figsize=(8, 1.5 * n_rows), sharex=False)
+fig, axes = plt.subplots(n_rows, 2, figsize=(12, 1 * n_rows), sharex=False)
 fig.subplots_adjust(hspace=0.5)
-fig.suptitle('Signals by Quality and Modality', fontsize=16)
+fig.suptitle('Signals by Quality and Modality', fontsize=14)
 
 # Set column headers
-axes[0, 0].set_title('ECG', fontsize=14)
-axes[0, 1].set_title('PCG', fontsize=14)
+axes[0, 0].set_title('ECG', fontsize=12)
+axes[0, 1].set_title('PCG', fontsize=12)
 
 # Plot each row
-for row_idx in range(n_rows):
-    # ECG side
-    label_ecg, pid_ecg, point_ecg = ecg_pairs[row_idx]
+for i in range(n_rows):
+    # --- ECG plot ---
+    label_ecg, pid_ecg, point_ecg = ecg_pairs[i]
     ecg = ulsge.get_ecg(pid_ecg, point_ecg)
-    axes[row_idx, 0].plot(ecg)
-    axes[row_idx, 0].set_ylabel(
-        label_ecg, rotation=0, labelpad=25, fontsize=12)
-    axes[row_idx, 0].tick_params(axis='x', labelbottom=False)
-    axes[row_idx, 0].tick_params(axis='y', labelleft=False)
-    axes[row_idx, 0].grid(True)
+    t_ecg = np.arange(len(ecg)) / fs_ecg
+    ax_ecg = axes[i, 0]
+    ax_ecg.plot(t_ecg, ecg)
+    ax_ecg.set_ylabel(label_ecg, rotation=0, labelpad=25, fontsize=12)
+    ax_ecg.grid(True)
 
-    # PCG side
-    label_pcg, pid_pcg, point_pcg = pcg_pairs[row_idx]
+    # --- PCG plot ---
+    label_pcg, pid_pcg, point_pcg = pcg_pairs[i]
     pcg = ulsge.get_pcg(pid_pcg, point_pcg)
-    axes[row_idx, 1].plot(pcg)
-    axes[row_idx, 1].tick_params(axis='x', labelbottom=False)
-    axes[row_idx, 1].tick_params(axis='y', labelleft=False)
-    axes[row_idx, 1].grid(True)
+    t_pcg = np.arange(len(pcg)) / fs_pcg
+    ax_pcg = axes[i, 1]
+    ax_pcg.plot(t_pcg, pcg, color='tab:orange')
+    ax_pcg.grid(True)
 
-# Remove axis labels
-for ax in axes.flat:
-    ax.set_xlabel('')
+    # Tick formatting
+    # x‐ticks only on last row
+    show_x = (i == n_rows - 1)
+    for ax in (ax_ecg, ax_pcg):
+        ax.tick_params(axis='x', labelbottom=show_x)
+        if show_x:
+            ax.set_xlabel('Time (s)')
+
+        # y‐ticks on right only
+        ax.yaxis.set_ticks_position('right')
+        ax.tick_params(axis='y', labelleft=False, labelright=True)
 
 plt.tight_layout()
-
-# Save to PDF at high resolution
 plt.savefig('quality_all_modalities.pdf', format='pdf', dpi=900)
-
 plt.show()
 
 # %% ECG Features
@@ -313,7 +335,7 @@ for ax in axes:
     ax.set_ylabel('')
     ax.grid(True)
 
-plt.tight_layout()
+# plt.tight_layout()
 # Save to PDF at high resolution
 plt.savefig('ecg_features.pdf', format='pdf', dpi=900)
 plt.show()
