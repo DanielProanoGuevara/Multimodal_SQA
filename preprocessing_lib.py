@@ -11,6 +11,9 @@ the ECG and PCG signals. The databases that this code is meant for are:
 
 PCG:
     - Physionet 2016 a-f
+    
+ECG:
+    - LUDB
 
 @functions:
 - resolution_normalization(data, resolution, centered_on_zero): normalizes data
@@ -62,12 +65,12 @@ resulting signal is in the range from 0 to 1.
 
 @creationDate: 2024-07-12
 
-@version: 0.1
+@version: 0.2
 """
 
 
 import numpy as np
-from scipy.signal import firwin, resample_poly
+from scipy.signal import firwin, resample_poly, welch
 from scipy import signal
 import pywt
 
@@ -594,3 +597,22 @@ def moving_average(x, window_size):
 
     # Return the cropped result
     return filtered
+
+def power_spectral_density(signal, fs, nperseg=1024, noverlap=None):
+    """
+    Wrapper around scipy.signal.welch.
+    Returns frequencies (Hz) and one-sided PSD.
+    """
+    signal = np.asarray(signal, dtype=float)
+    f, Pxx = welch(signal, fs=fs, nperseg=nperseg, noverlap=noverlap)
+    return f, Pxx
+
+def bandpower_psd(freqs, psd, band):
+    """
+    Integrate PSD over a frequency band [f_low, f_high].
+    """
+    f_low, f_high = band
+    mask = (freqs >= f_low) & (freqs <= f_high)
+    if not np.any(mask):
+        return 0.0
+    return np.trapz(psd[mask], freqs[mask])

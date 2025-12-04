@@ -12,7 +12,7 @@ import os
 import glob
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as pltb
+import matplotlib.pyplot as plt
 import preprocessing_lib as pplib
 import feature_extraction_lib as ftelib
 import file_process_lib as importlib
@@ -151,7 +151,7 @@ def match_intervals(ref_intervals, test_intervals, min_overlap=1):
     return matches
 
 
-def alignment_metric_min_lin(ecg_signal, pcg_signal, lambda_penalty=0.5, min_duration=1, min_overlap=1, extend_window=8):
+def alignment_metric_min_lin(ecg_signal, pcg_signal, lambda_penalty=0.1, min_duration=1, min_overlap=1, extend_window=2):
     """
     Compute the bidirectional alignment metric for the fiducial segments.
     Assumes:
@@ -202,7 +202,7 @@ def alignment_metric_min_lin(ecg_signal, pcg_signal, lambda_penalty=0.5, min_dur
     return overall_metric
 
 
-def alignment_metric_avg_lin(ecg_signal, pcg_signal, lambda_penalty=0.5, min_duration=1, min_overlap=1, extend_window=8):
+def alignment_metric_avg_lin(ecg_signal, pcg_signal, lambda_penalty=0.1, min_duration=1, min_overlap=1, extend_window=2):
     """
     Compute the bidirectional alignment metric for the fiducial segments.
     Assumes:
@@ -253,7 +253,7 @@ def alignment_metric_avg_lin(ecg_signal, pcg_signal, lambda_penalty=0.5, min_dur
     return overall_metric
 
 
-def alignment_metric_min_min(ecg_signal, pcg_signal, lambda_penalty=0.1, min_duration=1, min_overlap=1, extend_window=8):
+def alignment_metric_min_min(ecg_signal, pcg_signal, lambda_penalty=0.1, min_duration=1, min_overlap=1, extend_window=2):
     """
     Compute the bidirectional alignment metric for the fiducial segments.
     Assumes:
@@ -327,7 +327,7 @@ def alignment_metric_min_min(ecg_signal, pcg_signal, lambda_penalty=0.1, min_dur
     return overall_metric
 
 
-def alignment_metric_avg_min(ecg_signal, pcg_signal, lambda_penalty=0.5, min_duration=1, min_overlap=1, extend_window=8):
+def alignment_metric_avg_min(ecg_signal, pcg_signal, lambda_penalty=0.1, min_duration=1, min_overlap=1, extend_window=2):
     """
     Compute the bidirectional alignment metric for the fiducial segments.
     Assumes:
@@ -414,13 +414,13 @@ for idx in range(len(ecg_df)):
 
     # Compute alignment metrics using the defined functions
     metric_min_lin = alignment_metric_min_lin(
-        ecg_signal, pcg_signal, lambda_penalty=0.1)
+        ecg_signal, pcg_signal, lambda_penalty=0.1, extend_window=3)
     metric_avg_lin = alignment_metric_avg_lin(
-        ecg_signal, pcg_signal, lambda_penalty=0.1)
+        ecg_signal, pcg_signal, lambda_penalty=0.1, extend_window=3)
     metric_min_min = alignment_metric_min_min(
-        ecg_signal, pcg_signal, lambda_penalty=0.1)
+        ecg_signal, pcg_signal, lambda_penalty=0.1, extend_window=3)
     metric_avg_min = alignment_metric_avg_min(
-        ecg_signal, pcg_signal, lambda_penalty=0.1)
+        ecg_signal, pcg_signal, lambda_penalty=0.1, extend_window=3)
 
     # Retrieve metadata; fallback to index if columns are missing
     row_id = ecg_df.iloc[idx]['ID'] if 'ID' in ecg_df.columns else idx

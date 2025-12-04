@@ -34,7 +34,12 @@ import scipy.io
 from scipy import stats
 
 from sklearn.linear_model import LogisticRegressionCV
-from sklearn.metrics import roc_auc_score, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import (roc_auc_score, 
+                             confusion_matrix, 
+                             ConfusionMatrixDisplay, 
+                             accuracy_score,
+                             f1_score,
+                             recall_score)
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import label_binarize, LabelEncoder
 
@@ -335,13 +340,16 @@ for comparison, orig_p in pairwise_results:
 #   - Groups 2 and 3 -> "uncertain"
 #   - Groups 4 and 5 -> "high_quality"
 # Using np.select to avoid function definitions.
-conditions = [
-    test_df['mSQA_min'].isin([0, 1]),
-    test_df['mSQA_min'].isin([2, 3]),
-    test_df['mSQA_min'].isin([4, 5])
-]
-choices = ["low_quality", "uncertain", "high_quality"]
-test_df['quantized'] = np.select(conditions, choices, default=np.nan)
+mapping = {
+    0: "low_quality",
+    1: "uncertain",
+    2: "uncertain",
+    3: "high_quality",
+    4: "high_quality",
+    5: "high_quality",
+}
+
+test_df['quantized'] = test_df['mSQA_min'].map(mapping)
 
 # Calculate Mean and Variance for Quantized Groups
 quantized_stats = test_df.groupby('quantized')['alignment_metric_min_lin'].agg([
@@ -509,16 +517,51 @@ model_quant.fit(X_quant, y_quant)
 y_pred_quant = model_quant.predict(X_quant)
 y_proba_quant = model_quant.predict_proba(X_quant)
 
-auc_quant = roc_auc_score(label_binarize(
-    y_quant, classes=np.unique(y_quant)), y_proba_quant, multi_class='ovr')
-print(f"  AUC (Unquantized): {auc_unq:.4f}")
+# AUC (OvR, multi-class)
+auc_quant = roc_auc_score(
+    label_binarize(y_quant, classes=np.unique(y_quant)),
+    y_proba_quant,
+    multi_class='ovr'
+)
+print(f"  AUC (Quantized): {auc_quant:.4f}")
 
+# -----------------------------
+# Additional metrics (3-class, macro-averaged)
+# -----------------------------
+# Accuracy
+acc_quant = accuracy_score(y_quant, y_pred_quant)
 
+# Sensitivity (Recall) – macro average over classes
+sens_macro = recall_score(y_quant, y_pred_quant, average='macro')
+
+# F1 – macro average over classes
+f1_macro = f1_score(y_quant, y_pred_quant, average='macro')
+
+# Specificity – computed per class from confusion matrix, then macro average
+labels_int = np.unique(y_quant)
+cm_int = confusion_matrix(y_quant, y_pred_quant, labels=labels_int)
+
+# cm_int[i, j] = true class i, predicted class j
+tp = np.diag(cm_int)
+fp = cm_int.sum(axis=0) - tp
+fn = cm_int.sum(axis=1) - tp
+tn = cm_int.sum() - (tp + fp + fn)
+
+specificity_per_class = tn / (tn + fp)
+spec_macro = specificity_per_class.mean()
+
+print(f"  Accuracy (Quantized):      {acc_quant:.4f}")
+print(f"  Macro Sensitivity/Recall:  {sens_macro:.4f}")
+print(f"  Macro Specificity:         {spec_macro:.4f}")
+print(f"  Macro F1-score:            {f1_macro:.4f}")
+
+# -----------------------------
 # Decode to string labels for presentation
+# -----------------------------
 y_true_labels = le_quant.inverse_transform(y_quant)
 y_pred_labels = le_quant.inverse_transform(y_pred_quant)
 
-# Create confusion matrix with explicit label order
+# Create confusion matrix with explicit label order (string labels)
 cm = confusion_matrix(y_true_labels, y_pred_labels, labels=quantized_labels)
 
 # Normalize per true class (rows)
@@ -527,8 +570,16 @@ cm_percent = np.int8(cm_percent)
 
 # Plot
 fig, ax = plt.subplots(figsize=(4, 4))
-sns.heatmap(cm_percent, annot=True, fmt="d", cmap="Blues", cbar=False,
-            xticklabels=quantized_labels, yticklabels=quantized_labels, ax=ax)
+sns.heatmap(
+    cm_percent,
+    annot=True,
+    fmt="d",
+    cmap="Blues",
+    cbar=False,
+    xticklabels=quantized_labels,
+    yticklabels=quantized_labels,
+    ax=ax
+)
 
 ax.set_xlabel("Predicted Label")
 ax.set_ylabel("True Label")
@@ -537,10 +588,10 @@ plt.tight_layout()
 plt.show()
 # plt.savefig('CM_SQI_relabled.pdf', format='pdf', dpi=900)
 
-
 summarize_coefficients(model_quant, features)
 compute_permutation_importance(
-    model_quant, X_quant, y_quant, features, title="Quantized Permutation Importance")
+    model_quant, X_quant, y_quant, features, title="Quantized Permutation Importance"
+)
 
 
 # %%
