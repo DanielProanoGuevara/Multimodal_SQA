@@ -41,3 +41,5 @@ pcg_df['PCG'] = pcg_df['PCG'].apply(
 ## Test score generation
 
 seSQI = sqi_pcg_lib.se_sqi_pcg(pcg_df['PCG'][0], 3000, M=2, r=0.0008)
+
+cpSQI = sqi_pcg_lib.correlation_prominence_pcg(pcg_df['PCG'][0], 3000)
