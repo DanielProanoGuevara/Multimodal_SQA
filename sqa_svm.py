@@ -2,15 +2,18 @@
 """
 Created on Tue Dec  9 10:10:35 2025
 
-Train an RBF-kernel SVM on the reduced 3-label set using ONLY the
-alignment_metric_min_lin feature (min_lin SQI).
+Train an RBF-kernel SVM on the reduced 3-label set using the four
+alignment_metric features as predictors.
 
 This script reuses the same data loading and quantization logic used in
 hypothesis_tests.py, but replaces the classifier with an SVM.
 
 Output:
     - Console metrics (AUC, accuracy, sensitivity, specificity, F1)
-    - Saved model artifact: svm_min_lin_rbf.pkl
+    - Confusion matrix image (%)
+    - Per-sample CSV report with ID, auscultation focus, manual score,
+      min_lin, and decoded SVM prediction.
+    - (Model artifact saving code left commented for now.)
 
 Author: Daniel Proaño-Guevara (adapted)
 """
@@ -38,6 +41,7 @@ from sklearn.metrics import (
 AQ_PATH = r"..\ulsge_quality_metrics.pkl"
 MQ_PATH = r"..\ulsge_manual_sqa.xlsx"
 MODEL_PATH = "svm_min_lin_rbf.pkl"
+REPORT_PATH = "svm_min_lin_report.csv"
 
 # %% Merge function (reused from hypothesis_tests.py)
 def merge_quality_dataframes(ex1_quality: pd.DataFrame, m_quality: pd.DataFrame) -> pd.DataFrame:
@@ -94,7 +98,7 @@ m_quality = copy.deepcopy(m_quality_original)
 print("Merging automatic and manual quality DataFrames...")
 merged_df = merge_quality_dataframes(ex1_quality, m_quality)
 
-# %% 3. Build test_df (keep min_lin + other metrics to stay consistent)
+# %% 3. Build test_df (keep ID and Auscultation_Point for reporting)
 alignment_metrics = [
     "alignment_metric_min_lin",
     "alignment_metric_avg_lin",
@@ -107,7 +111,9 @@ for col in required_cols:
     if col not in merged_df.columns:
         raise ValueError(f"Required column '{col}' is missing in merged_df.")
 
-test_df = merged_df[required_cols].dropna()
+# Include ID and Auscultation_Point so we can build the final report
+base_cols = ["ID", "Auscultation_Point"]
+test_df = merged_df[base_cols + required_cols].dropna()
 if test_df.empty:
     raise ValueError("No valid rows available after dropping NaNs in test_df.")
 
@@ -132,10 +138,10 @@ quantized_labels = ["low_quality", "uncertain", "high_quality"]
 print("Quantized label distribution:")
 print(test_df["quantized"].value_counts())
 
-# %% 5. Prepare X (only min_lin) and y (3-class)
-# Single feature: alignment_metric_min_lin
-X = test_df[["alignment_metric_min_lin"]].values  # shape (N, 1)
-y_str = test_df["quantized"].values               # string labels
+# %% 5. Prepare X (all 4 alignment metrics) and y (3-class)
+# Features: all four alignment metrics
+X = test_df[alignment_metrics].values  # shape (N, 4)
+y_str = test_df["quantized"].values    # string labels
 
 # Encode string labels -> integers
 le = LabelEncoder()
@@ -148,17 +154,16 @@ ordered_labels_str = ["low_quality", "uncertain", "high_quality"]
 # Convert to encoded integer labels in that specific order
 ordered_labels_int = le.transform(ordered_labels_str)
 
-
 print("\nLabel encoding mapping:")
 for class_idx, class_name in enumerate(le.classes_):
     print(f"  {class_name} -> {class_idx}")
 
-# %% 6. Scale feature (recommended for RBF SVM)
+# %% 6. Scale features (recommended for RBF SVM)
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
 # %% 7. Define and train SVM (RBF kernel)
-print("\nTraining RBF-kernel SVM on min_lin feature...")
+print("\nTraining RBF-kernel SVM on 4 alignment_metric features...")
 svm_clf = SVC(
     kernel="rbf",
     probability=True,      # needed for ROC-AUC
@@ -171,6 +176,27 @@ svm_clf.fit(X_scaled, y)
 # %% 8. Predictions and probabilities
 y_pred = svm_clf.predict(X_scaled)
 y_proba = svm_clf.predict_proba(X_scaled)
+
+# Decode predictions back to string labels for reporting
+y_pred_str = le.inverse_transform(y_pred)
+
+# Build final per-sample report
+report_df = test_df.copy()
+report_df["svm_pred_label"] = y_pred_str
+
+# Keep only the requested columns in the final report
+report_df = report_df[
+    [
+        "ID",
+        "Auscultation_Point",
+        "mSQA_min",
+        "alignment_metric_min_lin",
+        "svm_pred_label",
+    ]
+]
+
+report_df.to_csv(REPORT_PATH, index=False)
+print(f"\nPer-sample report saved to: {REPORT_PATH}")
 
 # %% 9. Metrics
 print("\n-------------------------------------------------------")
@@ -236,7 +262,6 @@ for idx, label_name in enumerate(ordered_labels_str):
         f"{f1_per_class[idx]:.4f}"
     )
 
-# Plot confusion matrix as an image
 # Plot confusion matrix as percentages
 cm_normalized = cm.astype(float) / cm.sum(axis=1, keepdims=True) * 100
 
@@ -246,18 +271,18 @@ disp = ConfusionMatrixDisplay(confusion_matrix=cm_normalized,
 fig, ax = plt.subplots(figsize=(5, 4))
 disp.plot(ax=ax, values_format=".1f", cmap="Blues", colorbar=True)
 
-plt.title("SVM (RBF) – Confusion Matrix (min_lin, %)")
+plt.title("SVM (RBF) – Confusion Matrix (4 alignment features, %)")
 plt.ylabel("True Label")
 plt.xlabel("Predicted Label")
 
 plt.tight_layout()
-plt.savefig("svm_min_lin_confusion_matrix_percent.png",
-            dpi=300, bbox_inches="tight")
-plt.close(fig)
+# plt.savefig("svm_min_lin_confusion_matrix_percent.png",
+#             dpi=300, bbox_inches="tight")
+# plt.close(fig)
 
 print("\nPercentage confusion matrix figure saved as: svm_min_lin_confusion_matrix_percent.png")
 
-# %% 10. Save model artifact
+# %% 10. Save model artifact (optional: uncomment if you want to persist the model)
 model_artifact = {
     "svm_model": svm_clf,
     "scaler": scaler,

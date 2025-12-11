@@ -43,3 +43,8 @@ pcg_df['PCG'] = pcg_df['PCG'].apply(
 seSQI = sqi_pcg_lib.se_sqi_pcg(pcg_df['PCG'][0], 3000, M=2, r=0.0008)
 
 cpSQI = sqi_pcg_lib.correlation_prominence_pcg(pcg_df['PCG'][0], 3000)
+
+pr100_200SQI = sqi_pcg_lib.pcg_power_ratio_100_200(pcg_df['PCG'][0], 3000)
+
+pr200_400SQI = sqi_pcg_lib.pcg_power_ratio_200_400(pcg_df['PCG'][0], 3000)
+

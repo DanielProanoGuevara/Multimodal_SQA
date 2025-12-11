@@ -7,3 +7,4 @@ PreliResults/~$Alignment_Algorithms_Trials_Results.xlsx
 svm_min_lin_confusion_matrix.png
 svm_min_lin_confusion_matrix_percent.png
 svm_min_lin_rbf.pkl
+svm_min_lin_report.csv

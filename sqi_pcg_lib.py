@@ -8,7 +8,11 @@ Created on Wed Dec  3 14:26:40 2025
 import numpy as np
 from scipy.signal import hilbert, butter, filtfilt, find_peaks
 from sqi_core_lib import sampen
-from preprocessing_lib import power_spectral_density, bandpower_psd
+from preprocessing_lib import (power_spectral_density, 
+                               bandpower_psd, 
+                               butterworth_filter,
+                               power_spectral_density, 
+                               bandpower_psd,)
 from feature_extraction_lib import homomorphic_envelope, hilbert_envelope
 
 def _butterworth_low_pass_filter(x, order, cutoff_hz, fs):
@@ -98,7 +102,7 @@ def _pcg_envelope_autocorr_untruncated(signal, fs, lp_cutoff_hz=15.0):
 
     # 3) Normalize and low-pass filter
     acf = acf / acf[0]
-    acf_lp = _butterworth_low_pass_filter(acf, cutoff_hz=lp_cutoff_hz, fs=fs, order=1)
+    acf_lp = butterworth_filter(data = acf, filter_topology='lowpass', order=1, fs=fs, fc=lp_cutoff_hz)
     return acf_lp
 
 def se_sqi_pcg(audio_data, fs, M=2, r=None):
@@ -171,3 +175,24 @@ def correlation_prominence_pcg(signal, fs, hr_range_bpm=(40.0, 130.0),
     prominence_best = properties["prominences"][idx_best]
 
     return float(prominence_best)
+
+def pcg_power_ratio_100_200(signal, fs):
+    """
+    Spectral ratio: power in 100–200 Hz band / total PSD power.
+    Exact translation of Grooby's MATLAB code.
+    """
+    f, Pxx = power_spectral_density(signal, fs)
+    TP = bandpower_psd(f, Pxx, (f[0], f[-1]))        # total PSD power
+    num = bandpower_psd(f, Pxx, (100, 200))
+    return 0.0 if TP == 0 else num / TP
+
+
+def pcg_power_ratio_200_400(signal, fs):
+    """
+    Spectral ratio: power in 200–400 Hz band / total PSD power.
+    Exact translation of Grooby's MATLAB code.
+    """
+    f, Pxx = power_spectral_density(signal, fs)
+    TP = bandpower_psd(f, Pxx, (f[0], f[-1]))
+    num = bandpower_psd(f, Pxx, (200, 400))
+    return 0.0 if TP == 0 else num / TP
