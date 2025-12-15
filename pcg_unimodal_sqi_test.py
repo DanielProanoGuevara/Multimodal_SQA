@@ -48,3 +48,8 @@ pr100_200SQI = sqi_pcg_lib.pcg_power_ratio_100_200(pcg_df['PCG'][0], 3000)
 
 pr200_400SQI = sqi_pcg_lib.pcg_power_ratio_200_400(pcg_df['PCG'][0], 3000)
 
+mean_133_267 = sqi_pcg_lib.mfcc_mean_133_267_pcg(pcg_df['PCG'][0], 3000)
+
+median_133_267 = sqi_pcg_lib.mfcc_median_133_267_pcg(pcg_df['PCG'][0], 3000)
+
+max_600_733 = sqi_pcg_lib.mfcc_max_600_733_pcg(pcg_df['PCG'][0], 3000)

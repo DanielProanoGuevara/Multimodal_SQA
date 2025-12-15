@@ -7,7 +7,8 @@ Created on Wed Dec  3 14:26:40 2025
 
 import numpy as np
 from scipy.signal import hilbert, butter, filtfilt, find_peaks
-from sqi_core_lib import sampen
+from sqi_core_lib import (sampen,
+                          mfcc_band_energy_stats_tf,)
 from preprocessing_lib import (power_spectral_density, 
                                bandpower_psd, 
                                butterworth_filter,
@@ -196,3 +197,27 @@ def pcg_power_ratio_200_400(signal, fs):
     TP = bandpower_psd(f, Pxx, (f[0], f[-1]))
     num = bandpower_psd(f, Pxx, (200, 400))
     return 0.0 if TP == 0 else num / TP
+
+def mfcc_mean_133_267_pcg(signal, fs):
+    """
+    Feature 95: Mean log-mel energy in 133–267 Hz band.
+    """
+    return mfcc_band_energy_stats_tf(signal, fs, [
+        {'band': 1, 'stat': np.mean, 'name': 'mean'}
+    ])['mean']
+
+def mfcc_median_133_267_pcg(signal, fs):
+    """
+    Feature 109: Median log-mel energy in 133–267 Hz band.
+    """
+    return mfcc_band_energy_stats_tf(signal, fs, [
+        {'band': 1, 'stat': np.median, 'name': 'median'}
+    ])['median']
+
+def mfcc_max_600_733_pcg(signal, fs):
+    """
+    Feature 158: Max log-mel energy in 600–733 Hz band.
+    """
+    return mfcc_band_energy_stats_tf(signal, fs, [
+        {'band': 11, 'stat': np.max, 'name': 'max'}
+    ])['max']

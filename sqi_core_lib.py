@@ -7,6 +7,7 @@ Created on Wed Dec  3 13:29:19 2025
 
 # sqi_core_lib.py
 import numpy as np
+import tensorflow as tf
 from scipy.signal import hilbert
 from preprocessing_lib import power_spectral_density, bandpower_psd
 
@@ -85,3 +86,62 @@ def flatline_fraction(signal, fs, window_sec=0.2, tol=1e-4):
     flat_len = np.convolve(is_flat.astype(float), kernel, mode='same')
     flat_long = flat_len >= win
     return flat_long.mean()
+
+def mfcc_band_energy_stats_tf(signal, fs, band_targets,
+                               n_mels=14, fmin=50.0, fmax=1000.0):
+    """
+    Compute log-mel energy stats for given mel bands using TensorFlow.
+
+    Parameters
+    ----------
+    signal : np.ndarray
+        The input 1D PCG signal.
+    fs : int
+        Sampling rate.
+    band_targets : list of dict
+        Each dict must have: 'band', 'stat' (callable), and 'name'.
+    n_mels : int
+        Number of mel bands.
+    fmin : float
+        Minimum frequency of mel filters.
+    fmax : float
+        Maximum frequency of mel filters.
+
+    Returns
+    -------
+    dict
+        Dictionary of feature name -> scalar value.
+    """
+    audio_tensor = tf.convert_to_tensor(signal, dtype=tf.float32)
+    audio_tensor = tf.expand_dims(audio_tensor, 0)  # batch dim
+
+    frame_length = int(0.025 * fs)
+    frame_step = int(0.010 * fs)
+    fft_length = 2 ** int(np.ceil(np.log2(frame_length)))
+
+    stft = tf.signal.stft(
+        audio_tensor,
+        frame_length=frame_length,
+        frame_step=frame_step,
+        fft_length=fft_length,
+        window_fn=tf.signal.hamming_window,
+        pad_end=False
+    )
+    power_spec = tf.abs(stft) ** 2
+
+    mel_weights = tf.signal.linear_to_mel_weight_matrix(
+        num_mel_bins=n_mels,
+        num_spectrogram_bins=fft_length // 2 + 1,
+        sample_rate=fs,
+        lower_edge_hertz=fmin,
+        upper_edge_hertz=fmax
+    )
+    mel_spec = tf.matmul(power_spec, mel_weights)
+    log_mel = tf.math.log(mel_spec + 1e-6)  # Avoid log(0)
+    log_mel = log_mel.numpy()[0].T  # shape: (n_mels, n_frames)
+
+    result = {}
+    for item in band_targets:
+        values = log_mel[item['band'], :]
+        result[item['name']] = item['stat'](values)
+    return result
