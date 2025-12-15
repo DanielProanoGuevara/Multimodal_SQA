@@ -8,7 +8,9 @@ Created on Wed Dec  3 13:29:19 2025
 # sqi_core_lib.py
 import numpy as np
 import tensorflow as tf
-from scipy.signal import hilbert
+from scipy.signal import (hilbert,
+                          welch, 
+                          find_peaks,)
 from preprocessing_lib import power_spectral_density, bandpower_psd
 
 # ---------- Sample Entropy (PhysioNet-style) ----------
@@ -145,3 +147,88 @@ def mfcc_band_energy_stats_tf(signal, fs, band_targets,
         values = log_mel[item['band'], :]
         result[item['name']] = item['stat'](values)
     return result
+
+def periodogram_peak_difference(signal, fs, n_peaks=2):
+    """
+    Computes frequency difference between top 2 peaks of smoothed PSD.
+
+    Parameters
+    ----------
+    signal : 1D np.ndarray
+        Input PCG signal.
+    fs : int
+        Sampling frequency in Hz.
+    n_peaks : int
+        Number of top spectral peaks to consider (default=2).
+
+    Returns
+    -------
+    float
+        Frequency difference (Hz) between the top two spectral peaks.
+        Returns 0.0 if fewer than 2 peaks are found.
+    """
+    # Use Welch PSD with ~1 Hz resolution
+    nfft = 2 ** int(np.ceil(np.log2(2 * fs)))  # 2-sec window
+    f, pxx = welch(signal, fs=fs, window='hann', nperseg=nfft, noverlap=nfft//2, nfft=nfft)
+
+    # Smooth the PSD with a moving average
+    pxx_smooth = np.convolve(pxx, np.ones(5)/5, mode='same')
+
+    # Find peaks
+    peaks, properties = find_peaks(pxx_smooth)
+    if len(peaks) < 2:
+        return 0.0
+
+    # Sort peaks by power
+    sorted_idxs = np.argsort(pxx_smooth[peaks])[::-1]
+    top_peaks = peaks[sorted_idxs[:n_peaks]]
+
+    if len(top_peaks) < 2:
+        return 0.0
+
+    # Return frequency difference between top 2 peaks
+    return abs(f[top_peaks[0]] - f[top_peaks[1]])
+
+def svd_sqi(truncated_acf, fs, hr_range_bpm=(40, 130), step=5):
+    """
+    Compute svdSQI: minimum squared ratio of 2nd to 1st SVD singular values
+    across overlapping segments of the autocorrelation.
+
+    Parameters
+    ----------
+    truncated_acf : np.ndarray
+        Truncated autocorrelation of the PCG envelope.
+    fs : int
+        Sampling frequency in Hz.
+    hr_range_bpm : (int, int)
+        Heart rate range (min, max) in beats per minute.
+    step : int
+        Step size (samples) when sweeping window sizes.
+
+    Returns
+    -------
+    float
+        svdSQI value.
+    """
+    if len(truncated_acf) < 2:
+        return np.nan
+
+    min_hr, max_hr = hr_range_bpm
+    T_start = int(round(60.0 / max_hr * fs))
+    T_stop = int(round(60.0 / min_hr * fs))
+    L = len(truncated_acf)
+
+    rhos = []
+    for T in range(T_start, T_stop + 1, step):
+        n_windows = L // T
+        if n_windows < 2:
+            continue
+        Y = np.array([
+            truncated_acf[i*T:(i+1)*T] for i in range(n_windows)
+        ])
+        S = np.linalg.svd(Y.T, compute_uv=False)
+        if len(S) < 2:
+            rhos.append(10.0)
+        else:
+            rhos.append((S[1]/S[0])**2)
+    return float(np.min(rhos)) if rhos else np.nan

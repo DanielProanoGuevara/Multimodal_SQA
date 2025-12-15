@@ -53,3 +53,7 @@ mean_133_267 = sqi_pcg_lib.mfcc_mean_133_267_pcg(pcg_df['PCG'][0], 3000)
 median_133_267 = sqi_pcg_lib.mfcc_median_133_267_pcg(pcg_df['PCG'][0], 3000)
 
 max_600_733 = sqi_pcg_lib.mfcc_max_600_733_pcg(pcg_df['PCG'][0], 3000)
+
+diff_peak_sqi = sqi_pcg_lib.pcg_periodogram_peak_difference(pcg_df['PCG'][0], 3000)
+
+svdSQI = sqi_pcg_lib.svd_sqi_pcg(pcg_df['PCG'][0], 3000, hr_range_bpm=(70, 220))

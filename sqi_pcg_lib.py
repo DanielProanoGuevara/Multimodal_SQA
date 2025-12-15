@@ -8,12 +8,15 @@ Created on Wed Dec  3 14:26:40 2025
 import numpy as np
 from scipy.signal import hilbert, butter, filtfilt, find_peaks
 from sqi_core_lib import (sampen,
-                          mfcc_band_energy_stats_tf,)
+                          mfcc_band_energy_stats_tf,
+                          periodogram_peak_difference,
+                          svd_sqi,)
 from preprocessing_lib import (power_spectral_density, 
                                bandpower_psd, 
                                butterworth_filter,
                                power_spectral_density, 
-                               bandpower_psd,)
+                               bandpower_psd,
+                               )
 from feature_extraction_lib import homomorphic_envelope, hilbert_envelope
 
 def _butterworth_low_pass_filter(x, order, cutoff_hz, fs):
@@ -106,17 +109,30 @@ def _pcg_envelope_autocorr_untruncated(signal, fs, lp_cutoff_hz=15.0):
     acf_lp = butterworth_filter(data = acf, filter_topology='lowpass', order=1, fs=fs, fc=lp_cutoff_hz)
     return acf_lp
 
-def se_sqi_pcg(audio_data, fs, M=2, r=None):
+def se_sqi_pcg(signal, fs, M=2, r=None):
     """
-    Springer-style seSQI = SampEn(M, r, N) of truncated ACF of PCG envelope.
+    seSQI: Sample entropy of the truncated autocorrelation of PCG envelope.
+
+    Parameters
+    ----------
+    signal : np.ndarray
+        Input PCG signal.
+    fs : int
+        Sampling frequency.
+    M : int
+        Embedding dimension.
+    r : float or None
+        Similarity threshold. If None, defaults to 0.2 * std.
+
+    Returns
+    -------
+    float
+        Sample entropy.
     """
-    tacf, _ = _pcg_truncated_acf_from_envelope(audio_data, fs)
+    tacf, _ = _pcg_truncated_acf_from_envelope(signal, fs)
     if tacf.size == 0:
         return np.nan
-    if r is None:
-        r_eff = 0.2 * np.std(tacf, ddof=0)
-    else:
-        r_eff = r
+    r_eff = 0.2 * np.std(tacf) if r is None else r
     return sampen(tacf, M, r_eff, sflag=0)
 
 def correlation_prominence_pcg(signal, fs, hr_range_bpm=(40.0, 130.0),
@@ -221,3 +237,44 @@ def mfcc_max_600_733_pcg(signal, fs):
     return mfcc_band_energy_stats_tf(signal, fs, [
         {'band': 11, 'stat': np.max, 'name': 'max'}
     ])['max']
+
+def pcg_periodogram_peak_difference(signal, fs):
+    """
+    SQI: Periodogram peak difference (Grooby's feature 3).
+
+    Parameters
+    ----------
+    signal : 1D np.ndarray
+        PCG signal.
+    fs : int
+        Sampling frequency.
+
+    Returns
+    -------
+    float
+        Frequency difference between top 2 peaks in smoothed PSD.
+    """
+    return periodogram_peak_difference(signal, fs)
+
+def svd_sqi_pcg(signal, fs, hr_range_bpm=(40, 130)):
+    """
+    svdSQI: SVD-based SQI from truncated autocorrelation.
+
+    Parameters
+    ----------
+    signal : np.ndarray
+        PCG signal.
+    fs : int
+        Sampling frequency.
+    hr_range_bpm : tuple
+        Heart rate range (min, max) in bpm.
+
+    Returns
+    -------
+    float
+        svdSQI value.
+    """
+    tacf, _ = _pcg_truncated_acf_from_envelope(signal, fs)
+    if tacf.size == 0:
+        return np.nan
+    return svd_sqi(tacf, fs, hr_range_bpm)
