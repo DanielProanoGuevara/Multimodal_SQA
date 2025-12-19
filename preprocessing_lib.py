@@ -598,7 +598,8 @@ def moving_average(x, window_size):
     # Return the cropped result
     return filtered
 
-def power_spectral_density(signal, fs, nperseg=1024, noverlap=None):
+
+def power_spectral_density(signal, fs, nperseg=1024, noverlap=512):
     """
     Wrapper around scipy.signal.welch.
     Returns frequencies (Hz) and one-sided PSD.
@@ -606,6 +607,7 @@ def power_spectral_density(signal, fs, nperseg=1024, noverlap=None):
     signal = np.asarray(signal, dtype=float)
     f, Pxx = welch(signal, fs=fs, nperseg=nperseg, noverlap=noverlap)
     return f, Pxx
+
 
 def bandpower_psd(freqs, psd, band):
     """
