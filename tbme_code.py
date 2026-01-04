@@ -27,6 +27,9 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import preprocessing_lib as pplib
+import sqi_pcg_lib
+import sqi_ecg_lib
 
 try:
     from sklearn.model_selection import train_test_split, StratifiedKFold
@@ -81,37 +84,52 @@ print(f"  CLASS_ORDER: {CLASS_ORDER}")
 # %% Utilities (reused by all steps)
 # %% =========================
 
+# %% Merge dataframes (project-style, minimal output)
 def merge_quality_dataframes(ex1_quality: pd.DataFrame, m_quality: pd.DataFrame) -> pd.DataFrame:
     """
-    Merge ex1_quality and m_quality using the same key logic as your codebase:
-      - ex1_quality: (ID, Normalized_Point) where Normalized_Point is ausc point without '_' and upper
-      - m_quality:   (Trial, Normalized_Spot) where Normalized_Spot is spot without '_' and upper
+    Merge automatic metrics (ex1_quality) with manual labels (m_quality) using:
+      - ID == Trial  (as str)
+      - Auscultation_Point == Spot (ignoring underscores, case-insensitive)
+
+    Returns a CLEAN dataframe with only:
+      - ID, Auscultation_Point
+      - manual labels: mSQA_min, ECG, PCG (if present in m_quality)
+      - all ex1 columns starting with 'alignment_metric'
     """
     ex1 = ex1_quality.copy()
     m = m_quality.copy()
 
-    # --- Key normalization ---
+    # Keys as str
     ex1["ID"] = ex1["ID"].astype(str)
-    if "Trial" not in m.columns:
-        raise ValueError("m_quality must contain a 'Trial' column.")
     m["Trial"] = m["Trial"].astype(str)
 
-    if "Auscultation_Point" not in ex1.columns:
-        raise ValueError("ex1_quality must contain 'Auscultation_Point'.")
-    if "Spot" not in m.columns:
-        raise ValueError("m_quality must contain 'Spot' column.")
+    # Temporary normalized keys (NOT kept in result)
+    ex1["_k_point"] = ex1["Auscultation_Point"].astype(str).str.replace("_", "", regex=False).str.upper()
+    m["_k_spot"] = m["Spot"].astype(str).str.replace("_", "", regex=False).str.upper()
 
-    ex1["Normalized_Point"] = ex1["Auscultation_Point"].astype(str).str.replace("_", "", regex=False).str.upper()
-    m["Normalized_Spot"] = m["Spot"].astype(str).str.replace("_", "", regex=False).str.upper()
+    # Columns to bring from manual side (only what we need)
+    manual_keep = ["Trial", "_k_spot"]
+    for c in ["mSQA_min", "ECG", "PCG"]:
+        if c in m.columns:
+            manual_keep.append(c)
 
+    # Merge
     merged = pd.merge(
         ex1,
-        m,
-        left_on=["ID", "Normalized_Point"],
-        right_on=["Trial", "Normalized_Spot"],
-        how="inner",
+        m[manual_keep],
+        left_on=["ID", "_k_point"],
+        right_on=["Trial", "_k_spot"],
+        how="inner"
     )
-    return merged
+
+    # Keep only desired columns in the final output
+    alignment_cols = [c for c in ex1.columns if str(c).startswith("alignment_metric")]
+    base_cols = ["ID", "Auscultation_Point"] + [c for c in ["mSQA_min", "ECG", "PCG"] if c in merged.columns]
+
+    result = merged[base_cols + alignment_cols].copy()
+
+    return result
+
 
 
 def compute_specificity_from_cm(cm: np.ndarray) -> np.ndarray:
@@ -342,49 +360,56 @@ def build_3class_target_from_mquality(merged_df: pd.DataFrame, m_quality_cols: p
 
     return df, y_raw_col
 
-
 # %% =========================
-# %% STEP 1 — Quantized-only (3-class) Logistic Regression on alignment metrics
+# %% STEP 1 — LogReg on alignment_metric*, 3-class
 # %% =========================
 print("\n[Step 1] Loading datasets...")
 ex1_quality = pd.read_pickle(AQ_PATH)
 m_quality = pd.read_excel(MQ_PATH)
 
-print(f"  ex1_quality shape: {ex1_quality.shape}")
-print(f"  m_quality shape:   {m_quality.shape}")
-
-print("\n[Step 1] Merging...")
+print("\n[Step 1] Merging (clean output)...")
 merged = merge_quality_dataframes(ex1_quality, m_quality)
-print(f"  merged rows:    {len(merged)}")
-print(f"  merged columns: {len(merged.columns)}")
 
-# Collect alignment metrics automatically (your convention)
+# Optional filtering (your preference)
+if "mSQA_min" in merged.columns:
+    merged = merged.dropna(subset=["mSQA_min"])
+if "ECG" in merged.columns:
+    merged = merged.dropna(subset=["ECG"])
+if "PCG" in merged.columns:
+    merged = merged.dropna(subset=["PCG"])
+
+print(f"  merged rows: {len(merged)}")
+print(f"  merged columns: {list(merged.columns)}")
+
 alignment_metrics = [c for c in merged.columns if str(c).startswith("alignment_metric")]
 if not alignment_metrics:
-    raise ValueError("No alignment_metric* columns found in merged DataFrame.")
+    raise ValueError("No alignment_metric* columns found after merge.")
 
-print(f"\n[Step 1] Found {len(alignment_metrics)} alignment metrics.")
-for c in alignment_metrics:
-    print(f"  - {c}")
+print("\n[Step 1] Building 3-class target from mSQA_min...")
+if "mSQA_min" not in merged.columns:
+    raise ValueError("mSQA_min not found in merged. Your manual file should contain it.")
 
-print("\n[Step 1] Building 3-class target...")
-df1, y_raw_col = build_3class_target_from_mquality(merged, m_quality.columns)
+df1 = merged.copy()
+df1["mSQA_min"] = pd.to_numeric(df1["mSQA_min"], errors="coerce")
+df1 = df1.dropna(subset=["mSQA_min"]).copy()
 
-# Drop rows missing any features (critical before training)
-df1 = df1.dropna(subset=alignment_metrics + ["y_3class"]).copy()
+df1["y_3class_str"] = df1["mSQA_min"].astype(int).map(RELABEL_MAP)
+df1 = df1.dropna(subset=["y_3class_str"]).copy()
 
-print(f"  using raw y col: {y_raw_col}")
-print(f"  rows after dropna(features+y): {len(df1)}")
-print("  3-class distribution:")
-print(df1["y_3class_str"].value_counts())
+le = LabelEncoder()
+le.fit(CLASS_ORDER)
+df1["y_3class"] = le.transform(df1["y_3class_str"].values)
+
+# Drop rows with missing features
+df1 = df1.dropna(subset=alignment_metrics).copy()
 
 X1 = df1[alignment_metrics].values
 y1 = df1["y_3class"].values
 
-class_names = CLASS_ORDER
-class_labels_int = np.array([0, 1, 2], dtype=int)
+print("[Step 1] 3-class distribution:")
+print(df1["y_3class_str"].value_counts())
 
-# Multinomial LR (balanced) with feature scaling
+# Model (same as before)
 lr_pipe = Pipeline([
     ("scaler", StandardScaler()),
     ("lr", LogisticRegression(
@@ -396,210 +421,113 @@ lr_pipe = Pipeline([
     ))
 ])
 
-print("\n[Step 1] Train/test split (stratified) and evaluation...")
-Xtr, Xte, ytr, yte = train_test_split(
-    X1, y1,
-    test_size=TEST_SIZE,
-    random_state=RANDOM_STATE,
-    stratify=y1
-)
+print("\n[Step 1] Train/test evaluation...")
+Xtr, Xte, ytr, yte = train_test_split(X1, y1, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y1)
 
 res1_test = evaluate_test_split(
     model=lr_pipe,
     Xtr=Xtr, Xte=Xte,
     ytr=ytr, yte=yte,
-    class_labels=class_labels_int,
-    class_names=class_names,
+    class_labels=np.array([0, 1, 2], dtype=int),
+    class_names=CLASS_ORDER,
     task_name="Step 1 — LogReg (alignment metrics) — 3-class",
     out_prefix="step1_logreg_3class"
 )
 
-print("\n[Step 1] Cross-validated summary metrics...")
+print("\n[Step 1] Cross-validated summary...")
 res1_cv = cross_validated_summary(
     pipeline=lr_pipe,
-    X=X1,
-    y=y1,
-    class_labels=class_labels_int,
+    X=X1, y=y1,
+    class_labels=np.array([0, 1, 2], dtype=int),
     task_name="Step 1 — LogReg (alignment metrics) — 3-class"
 )
 
-summary1_df = pd.DataFrame([
-    {
-        "experiment": "step1_logreg_3class_test",
-        "auc_ovr": res1_test["auc_ovr"],
-        "accuracy": res1_test["accuracy"],
-        "macro_sensitivity": res1_test["macro_sensitivity"],
-        "macro_specificity": res1_test["macro_specificity"],
-        "macro_f1": res1_test["macro_f1"],
-        "n_samples": int(len(y1)),
-        "n_features": int(X1.shape[1]),
-    },
-    {
-        "experiment": "step1_logreg_3class_cv",
-        "auc_ovr": res1_cv["cv_auc_mean"],
-        "accuracy": res1_cv["cv_acc_mean"],
-        "macro_sensitivity": res1_cv["cv_rec_mean"],
-        "macro_specificity": res1_cv["cv_spec_mean"],
-        "macro_f1": res1_cv["cv_f1_mean"],
-        "n_samples": int(len(y1)),
-        "n_features": int(X1.shape[1]),
-    }
-])
-
-summary1_csv = os.path.join(OUT_DIR, "step1_logreg_3class_summary.csv")
-summary1_df.to_csv(summary1_csv, index=False)
-
-print("\n" + "=" * 80)
-print("[Step 1 COMPLETE] SUMMARY TABLE")
-print("=" * 80)
-print(summary1_df.to_string(index=False))
-print(f"\nSaved: {summary1_csv}")
-print(f"Artifacts folder: {OUT_DIR}")
 
 # %% =========================
-# %% STEP 2 — PCG unimodal SQIs (ALL) + 3-class Logistic Regression
-# %% Signal source: pcg_ulsge.pkl (loaded separately)
-# %% Target: manual PCG label from Excel column D header 'PCG'
-# %% IMPORTANT: avoid PCG_x/PCG_y collision by renaming manual label -> PCG_manual
+# %% STEP 2 — PCG unimodal SQIs (ALL) + 3-class LogReg
+# %% Uses manual PCG label from `merged["PCG"]`
 # %% =========================
-
-# --- Optional imports (warn if missing as requested) ---
-try:
-    import sqi_pcg_lib
-except Exception as e:
-    warnings.warn(f"[WARN] Could not import sqi_pcg_lib: {e}. Step 2 will fail until fixed.")
-
-try:
-    import preprocessing_lib as pplib
-except Exception as e:
-    warnings.warn(f"[WARN] Could not import preprocessing_lib as pplib: {e}. Step 2 will fail until fixed.")
-
-# --- Step 2 config ---
 OUT_DIR_STEP2 = "exp_step2_pcg_unimodal_allSQI_logreg_3class"
 os.makedirs(OUT_DIR_STEP2, exist_ok=True)
 
 PCG_PKL_PATH = r"..\DatasetCHVNGE\pcg_ulsge.pkl"
-
 PCG_FS = 3000
 PCG_BPF_ORDER = 4
 PCG_BPF_FC = [50, 250]
 
-# SQI parameters aligned with your pcg_unimodal_sqi_test usage
 SE_M = 2
 SE_R = 0.0008
 SVD_HR_RANGE_BPM = (70, 220)
 
-# Expected columns in pcg_ulsge.pkl
 PCG_ID_COL = "ID"
 PCG_POINT_COL = "Auscultation_Point"
-PCG_SIGNAL_COL = "PCG"  # must remain the signal column name
-
-# Manual target column name (Excel column D header) -> rename to avoid collision
-Y_MANUAL_COL = "PCG"               # as it appears in merged
-Y_MANUAL_COL_RENAMED = "PCG_manual"
+PCG_SIGNAL_COL = "PCG"  # signal must be this
 
 FEATURE_COLS_STEP2 = [
-    "seSQI",
-    "cpSQI",
-    "pr100_200SQI",
-    "pr200_400SQI",
-    "mean_133_267",
-    "median_133_267",
-    "max_600_733",
-    "diff_peak_sqi",
-    "svdSQI",
+    "seSQI", "cpSQI", "pr100_200SQI", "pr200_400SQI",
+    "mean_133_267", "median_133_267", "max_600_733",
+    "diff_peak_sqi", "svdSQI"
 ]
 
-print("\n[Step 2] Configured:")
-print(f"  OUT_DIR_STEP2: {OUT_DIR_STEP2}")
-print(f"  PCG_PKL_PATH: {PCG_PKL_PATH}")
-print(f"  PCG_FS: {PCG_FS}, bandpass: {PCG_BPF_FC} (order={PCG_BPF_ORDER})")
-print(f"  Manual target column: {Y_MANUAL_COL} -> will be renamed to {Y_MANUAL_COL_RENAMED}")
-
-# --- Preconditions: `merged` must exist from Step 1 ---
-if "merged_df" in globals() and "merged" not in globals():
-    merged = merged_df
+# --- Preconditions ---
 if "merged" not in globals():
-    raise RuntimeError("Step 2 expects a merged dataframe named `merged` from Step 1.")
-
-if Y_MANUAL_COL not in merged.columns:
-    raise ValueError(
-        f"Manual target column '{Y_MANUAL_COL}' not found in merged dataframe. "
-        "Check the Excel header and merge."
-    )
-
-# %% -------------------------
-# %% Load PCG dataframe (signals)
-# %% -------------------------
-print("\n[Step 2] Loading PCG dataframe...")
-pcg_df = pd.read_pickle(PCG_PKL_PATH)
-print(f"  pcg_df shape: {pcg_df.shape}")
-
-for col in [PCG_ID_COL, PCG_POINT_COL, PCG_SIGNAL_COL]:
-    if col not in pcg_df.columns:
-        raise ValueError(f"pcg_df is missing required column '{col}'.")
-
-# Normalize join keys (consistent with Step 1)
-pcg_df = pcg_df.copy()
-pcg_df[PCG_ID_COL] = pcg_df[PCG_ID_COL].astype(str)
-pcg_df["Normalized_Point"] = pcg_df[PCG_POINT_COL].astype(str).str.replace("_", "", regex=False).str.upper()
-
-merged_step2 = merged.copy()
-merged_step2["ID"] = merged_step2["ID"].astype(str)
-merged_step2["Normalized_Point"] = merged_step2["Auscultation_Point"].astype(str).str.replace("_", "", regex=False).str.upper()
-
-# Keep only manual fields needed and RENAME label column to avoid collision with signal 'PCG'
-manual_df = merged_step2[["ID", "Auscultation_Point", "Normalized_Point", Y_MANUAL_COL]].copy()
-manual_df = manual_df.rename(columns={Y_MANUAL_COL: Y_MANUAL_COL_RENAMED})
-
-# %% -------------------------
-# %% Join signals with manual labels (collision-safe)
-# %% -------------------------
-print("[Step 2] Joining PCG signals with manual labels (collision-safe)...")
-df2 = pd.merge(
-    pcg_df[[PCG_ID_COL, PCG_POINT_COL, "Normalized_Point", PCG_SIGNAL_COL]].copy(),
-    manual_df,
-    left_on=[PCG_ID_COL, "Normalized_Point"],
-    right_on=["ID", "Normalized_Point"],
-    how="inner",
-)
-print(f"  joined rows: {len(df2)}")
-
-# Sanity checks: ensure no PCG_x/PCG_y
-if "PCG_x" in df2.columns or "PCG_y" in df2.columns:
-    raise RuntimeError(
-        "Found PCG_x/PCG_y after merge; collision fix not applied correctly. "
-        f"Columns: {list(df2.columns)}"
-    )
-if PCG_SIGNAL_COL not in df2.columns:
-    raise RuntimeError(f"Signal column '{PCG_SIGNAL_COL}' missing after merge.")
-if Y_MANUAL_COL_RENAMED not in df2.columns:
-    raise RuntimeError(f"Manual label column '{Y_MANUAL_COL_RENAMED}' missing after merge.")
-
-# %% -------------------------
-# %% Preprocess PCG (bandpass) BEFORE SQI extraction
-# %% -------------------------
+    raise RuntimeError("Step 2 expects `merged` from Step 1 (clean merged output).")
+if "PCG" not in merged.columns:
+    raise ValueError("Manual PCG column not found in merged. Ensure m_quality has 'PCG' column.")
 if "pplib" not in globals():
     raise ImportError("preprocessing_lib (pplib) not available. Fix imports to run preprocessing.")
 
-print("\n[Step 2] Preprocessing PCG (Butterworth bandpass)...")
+# --- Load PCG signals ---
+print("\n[Step 2] Loading PCG signals...")
+pcg_df = pd.read_pickle(PCG_PKL_PATH).copy()
+pcg_df[PCG_ID_COL] = pcg_df[PCG_ID_COL].astype(str)
+
+# --- Build a clean manual-label df (rename label to avoid collision) ---
+manual_pcg_df = merged[["ID", "Auscultation_Point", "PCG"]].copy()
+manual_pcg_df["ID"] = manual_pcg_df["ID"].astype(str)
+manual_pcg_df = manual_pcg_df.rename(columns={"PCG": "PCG_manual"})  # prevents PCG_x/PCG_y
+
+# --- Temporary normalized keys just for the join ---
+pcg_df["_k_point"] = pcg_df[PCG_POINT_COL].astype(str).str.replace("_", "", regex=False).str.upper()
+manual_pcg_df["_k_point"] = manual_pcg_df["Auscultation_Point"].astype(str).str.replace("_", "", regex=False).str.upper()
+
+print("[Step 2] Joining signals with manual PCG labels (clean, collision-safe)...")
+df2 = pd.merge(
+    pcg_df[[PCG_ID_COL, PCG_POINT_COL, "_k_point", PCG_SIGNAL_COL]].copy(),
+    manual_pcg_df[["ID", "Auscultation_Point", "_k_point", "PCG_manual"]].copy(),
+    left_on=[PCG_ID_COL, "_k_point"],
+    right_on=["ID", "_k_point"],
+    how="inner"
+)
+
+# Drop the join helper
+df2 = df2.drop(columns=["_k_point"])
+
+# Drop redundant manual auscultation point (keep the signal-side one)
+# This keeps df readable and avoids *_x/*_y patterns.
+df2 = df2.drop(columns=["Auscultation_Point_y"]).rename(columns={"Auscultation_Point_x": "Auscultation_Point"})
+
+print(f"  joined rows: {len(df2)}")
+if "PCG_x" in df2.columns or "PCG_y" in df2.columns:
+    raise RuntimeError("Still got PCG_x/PCG_y. The rename to PCG_manual did not apply correctly.")
+
+# --- Preprocess signal ---
+print("\n[Step 2] Preprocessing PCG (bandpass)...")
 df2[PCG_SIGNAL_COL] = df2[PCG_SIGNAL_COL].apply(
     lambda data: pplib.butterworth_filter(
         data,
         filter_topology="bandpass",
         order=PCG_BPF_ORDER,
         fs=PCG_FS,
-        fc=PCG_BPF_FC,
+        fc=PCG_BPF_FC
     )
 )
 
-# %% -------------------------
-# %% Build 3-class target from manual annotations (now in PCG_manual)
-# %% -------------------------
-df2[Y_MANUAL_COL_RENAMED] = pd.to_numeric(df2[Y_MANUAL_COL_RENAMED], errors="coerce")
-df2 = df2.dropna(subset=[Y_MANUAL_COL_RENAMED]).copy()
+# --- Build 3-class target from PCG_manual ---
+df2["PCG_manual"] = pd.to_numeric(df2["PCG_manual"], errors="coerce")
+df2 = df2.dropna(subset=["PCG_manual"]).copy()
 
-df2["y_3class_str"] = df2[Y_MANUAL_COL_RENAMED].astype(int).map(RELABEL_MAP)
+df2["y_3class_str"] = df2["PCG_manual"].astype(int).map(RELABEL_MAP)
 df2 = df2.dropna(subset=["y_3class_str"]).copy()
 
 le2 = LabelEncoder()
@@ -609,11 +537,8 @@ df2["y_3class"] = le2.transform(df2["y_3class_str"].values)
 print("\n[Step 2] 3-class distribution:")
 print(df2["y_3class_str"].value_counts())
 
-# %% -------------------------
-# %% Extract ALL unimodal PCG SQIs for each signal (pcg_unimodal_sqi_test-style)
-# %% -------------------------
+# --- SQI extraction ---
 def _safe_float(v):
-    """Convert to finite float; otherwise return NaN."""
     try:
         v = float(v)
         return v if np.isfinite(v) else np.nan
@@ -621,11 +546,6 @@ def _safe_float(v):
         return np.nan
 
 def extract_all_pcg_sqi_features(pcg_sig, fs=PCG_FS):
-    """
-    Extract all unimodal PCG SQIs for one signal.
-    Each SQI is isolated in its own try/except so partial results survive.
-    """
-    # Basic signal sanity
     try:
         x = np.asarray(pcg_sig, dtype=float).squeeze()
         if x.ndim != 1 or len(x) < int(0.5 * fs):
@@ -634,71 +554,41 @@ def extract_all_pcg_sqi_features(pcg_sig, fs=PCG_FS):
         return {k: np.nan for k in FEATURE_COLS_STEP2}
 
     out = {}
-
-    try:
-        out["seSQI"] = _safe_float(sqi_pcg_lib.se_sqi_pcg(x, fs, M=SE_M, r=SE_R))
-    except Exception:
-        out["seSQI"] = np.nan
-
-    try:
-        out["cpSQI"] = _safe_float(sqi_pcg_lib.correlation_prominence_pcg(x, fs))
-    except Exception:
-        out["cpSQI"] = np.nan
-
-    try:
-        out["pr100_200SQI"] = _safe_float(sqi_pcg_lib.pcg_power_ratio_100_200(x, fs))
-    except Exception:
-        out["pr100_200SQI"] = np.nan
-
-    try:
-        out["pr200_400SQI"] = _safe_float(sqi_pcg_lib.pcg_power_ratio_200_400(x, fs))
-    except Exception:
-        out["pr200_400SQI"] = np.nan
-
-    try:
-        out["mean_133_267"] = _safe_float(sqi_pcg_lib.mfcc_mean_133_267_pcg(x, fs))
-    except Exception:
-        out["mean_133_267"] = np.nan
-
-    try:
-        out["median_133_267"] = _safe_float(sqi_pcg_lib.mfcc_median_133_267_pcg(x, fs))
-    except Exception:
-        out["median_133_267"] = np.nan
-
-    try:
-        out["max_600_733"] = _safe_float(sqi_pcg_lib.mfcc_max_600_733_pcg(x, fs))
-    except Exception:
-        out["max_600_733"] = np.nan
-
-    try:
-        out["diff_peak_sqi"] = _safe_float(sqi_pcg_lib.pcg_periodogram_peak_difference(x, fs))
-    except Exception:
-        out["diff_peak_sqi"] = np.nan
-
-    try:
-        out["svdSQI"] = _safe_float(sqi_pcg_lib.svd_sqi_pcg(x, fs, hr_range_bpm=SVD_HR_RANGE_BPM))
-    except Exception:
-        out["svdSQI"] = np.nan
+    try: out["seSQI"] = _safe_float(sqi_pcg_lib.se_sqi_pcg(x, fs, M=SE_M, r=SE_R))
+    except Exception: out["seSQI"] = np.nan
+    try: out["cpSQI"] = _safe_float(sqi_pcg_lib.correlation_prominence_pcg(x, fs))
+    except Exception: out["cpSQI"] = np.nan
+    try: out["pr100_200SQI"] = _safe_float(sqi_pcg_lib.pcg_power_ratio_100_200(x, fs))
+    except Exception: out["pr100_200SQI"] = np.nan
+    try: out["pr200_400SQI"] = _safe_float(sqi_pcg_lib.pcg_power_ratio_200_400(x, fs))
+    except Exception: out["pr200_400SQI"] = np.nan
+    try: out["mean_133_267"] = _safe_float(sqi_pcg_lib.mfcc_mean_133_267_pcg(x, fs))
+    except Exception: out["mean_133_267"] = np.nan
+    try: out["median_133_267"] = _safe_float(sqi_pcg_lib.mfcc_median_133_267_pcg(x, fs))
+    except Exception: out["median_133_267"] = np.nan
+    try: out["max_600_733"] = _safe_float(sqi_pcg_lib.mfcc_max_600_733_pcg(x, fs))
+    except Exception: out["max_600_733"] = np.nan
+    try: out["diff_peak_sqi"] = _safe_float(sqi_pcg_lib.pcg_periodogram_peak_difference(x, fs))
+    except Exception: out["diff_peak_sqi"] = np.nan
+    try: out["svdSQI"] = _safe_float(sqi_pcg_lib.svd_sqi_pcg(x, fs, hr_range_bpm=SVD_HR_RANGE_BPM))
+    except Exception: out["svdSQI"] = np.nan
 
     return out
 
-print("\n[Step 2] Extracting ALL PCG SQIs for all joined signals...")
+print("\n[Step 2] Extracting PCG SQIs...")
 feat_df = df2[PCG_SIGNAL_COL].apply(lambda sig: pd.Series(extract_all_pcg_sqi_features(sig, fs=PCG_FS)))
 df2 = pd.concat([df2.reset_index(drop=True), feat_df.reset_index(drop=True)], axis=1)
 
-# Drop rows with missing SQI values (strict policy)
 n_before = len(df2)
 df2 = df2.dropna(subset=FEATURE_COLS_STEP2).copy()
 print(f"[Step 2] Rows before dropping NaNs in SQIs: {n_before}, after: {len(df2)}")
 
-# Save extracted features (audit/debug)
+# Save extracted features
 features_csv = os.path.join(OUT_DIR_STEP2, "step2_pcg_unimodal_features_extracted.csv")
-df2[["ID", "Auscultation_Point_x", "y_3class_str"] + FEATURE_COLS_STEP2].to_csv(features_csv, index=False)
+df2[["ID", "Auscultation_Point", "y_3class_str"] + FEATURE_COLS_STEP2].to_csv(features_csv, index=False)
 print(f"[Step 2] Saved extracted features: {features_csv}")
 
-# %% -------------------------
-# %% ML: Multinomial Logistic Regression (3-class), using ALL SQIs
-# %% -------------------------
+# --- Train LogReg ---
 X2 = df2[FEATURE_COLS_STEP2].values
 y2 = df2["y_3class"].values
 
@@ -713,15 +603,9 @@ lr_pipe_step2 = Pipeline([
     ))
 ])
 
-print("\n[Step 2] Train/test split (stratified) and evaluation...")
-Xtr2, Xte2, ytr2, yte2 = train_test_split(
-    X2, y2,
-    test_size=TEST_SIZE,
-    random_state=RANDOM_STATE,
-    stratify=y2
-)
+print("\n[Step 2] Train/test evaluation...")
+Xtr2, Xte2, ytr2, yte2 = train_test_split(X2, y2, test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y2)
 
-# evaluate_test_split writes into global OUT_DIR -> temporarily point it to step2 folder
 _OUT_DIR_BACKUP = OUT_DIR
 OUT_DIR = OUT_DIR_STEP2
 
@@ -735,56 +619,283 @@ res2_test = evaluate_test_split(
     out_prefix="step2_logreg_pcg_unimodal_allSQI_3class"
 )
 
-print("\n[Step 2] Cross-validated summary metrics...")
+print("\n[Step 2] Cross-validated summary...")
 res2_cv = cross_validated_summary(
     pipeline=lr_pipe_step2,
-    X=X2,
-    y=y2,
+    X=X2, y=y2,
     class_labels=np.array([0, 1, 2], dtype=int),
     task_name="Step 2 — LogReg (PCG unimodal ALL SQIs) — 3-class"
+)
+
+OUT_DIR = _OUT_DIR_BACKUP
+
+# %% =========================
+# %% STEP 3 — ECG unimodal SQIs (ALL) + 3-class Logistic Regression
+# %% Signal source: ecg_ulsge.pkl (loaded separately)
+# %% Target: manual ECG label from `merged["ECG"]` (Excel column C header 'ECG')
+# %% Clean join: temporary normalized keys only (no redundant Trial/Spot/Normalized columns kept)
+# %% =========================
+OUT_DIR_STEP3 = "exp_step3_ecg_unimodal_allSQI_logreg_3class"
+os.makedirs(OUT_DIR_STEP3, exist_ok=True)
+
+ECG_PKL_PATH = r"..\DatasetCHVNGE\ecg_ulsge.pkl"
+
+ECG_FS = 500
+ECG_LPF_ORDER = 4
+ECG_LPF_FC = 125
+
+# Expected columns in ecg_ulsge.pkl
+ECG_ID_COL = "ID"
+ECG_POINT_COL = "Auscultation_Point"
+ECG_SIGNAL_COL = "ECG"  # signal must be this
+
+# Manual target column name in merged (Excel column C header)
+Y_MANUAL_COL = "ECG"                 # as it appears in merged
+Y_MANUAL_COL_RENAMED = "ECG_manual"  # avoid any collision (safety)
+
+FEATURE_COLS_STEP3 = [
+    "bSQI",
+    "pSQI",
+    "sSQI",
+    "kSQI",
+    "fSQI",
+    "basSQI",
+]
+
+print("\n[Step 3] Configured:")
+print(f"  OUT_DIR_STEP3: {OUT_DIR_STEP3}")
+print(f"  ECG_PKL_PATH: {ECG_PKL_PATH}")
+print(f"  ECG_FS: {ECG_FS}, lowpass: fc={ECG_LPF_FC} (order={ECG_LPF_ORDER})")
+print(f"  Manual target column: {Y_MANUAL_COL} -> will be renamed to {Y_MANUAL_COL_RENAMED}")
+
+# --- Preconditions ---
+if "merged" not in globals():
+    raise RuntimeError("Step 3 expects `merged` from Step 1 (clean merged output).")
+if Y_MANUAL_COL not in merged.columns:
+    raise ValueError(f"Manual ECG column '{Y_MANUAL_COL}' not found in merged. Ensure m_quality has 'ECG' column.")
+if "pplib" not in globals():
+    raise ImportError("preprocessing_lib (pplib) not available. Fix imports to run preprocessing.")
+
+# %% -------------------------
+# %% Load ECG signals
+# %% -------------------------
+print("\n[Step 3] Loading ECG signals...")
+ecg_df = pd.read_pickle(ECG_PKL_PATH).copy()
+print(f"  ecg_df shape: {ecg_df.shape}")
+
+for col in [ECG_ID_COL, ECG_POINT_COL, ECG_SIGNAL_COL]:
+    if col not in ecg_df.columns:
+        raise ValueError(f"ecg_df is missing required column '{col}'.")
+
+ecg_df[ECG_ID_COL] = ecg_df[ECG_ID_COL].astype(str)
+
+# %% -------------------------
+# %% Build a clean manual-label df (rename label to avoid collisions)
+# %% -------------------------
+manual_ecg_df = merged[["ID", "Auscultation_Point", Y_MANUAL_COL]].copy()
+manual_ecg_df["ID"] = manual_ecg_df["ID"].astype(str)
+manual_ecg_df = manual_ecg_df.rename(columns={Y_MANUAL_COL: Y_MANUAL_COL_RENAMED})
+
+# Temporary normalized keys for robust join (NOT kept)
+ecg_df["_k_point"] = ecg_df[ECG_POINT_COL].astype(str).str.replace("_", "", regex=False).str.upper()
+manual_ecg_df["_k_point"] = manual_ecg_df["Auscultation_Point"].astype(str).str.replace("_", "", regex=False).str.upper()
+
+# %% -------------------------
+# %% Join ECG signals with manual ECG labels (clean, collision-safe)
+# %% -------------------------
+print("[Step 3] Joining signals with manual ECG labels (clean)...")
+df3 = pd.merge(
+    ecg_df[[ECG_ID_COL, ECG_POINT_COL, "_k_point", ECG_SIGNAL_COL]].copy(),
+    manual_ecg_df[["ID", "Auscultation_Point", "_k_point", Y_MANUAL_COL_RENAMED]].copy(),
+    left_on=[ECG_ID_COL, "_k_point"],
+    right_on=["ID", "_k_point"],
+    how="inner",
+)
+
+# Clean up: remove join helper + redundant manual ausc point
+df3 = df3.drop(columns=["_k_point"])
+df3 = df3.drop(columns=["Auscultation_Point_y"]).rename(columns={"Auscultation_Point_x": "Auscultation_Point"})
+
+print(f"  joined rows: {len(df3)}")
+
+# Safety: avoid suffix collisions
+if "ECG_x" in df3.columns or "ECG_y" in df3.columns:
+    raise RuntimeError("Found ECG_x/ECG_y after merge; collision-safe join failed.")
+
+# %% -------------------------
+# %% Preprocess ECG (lowpass) BEFORE SQI extraction
+# %% -------------------------
+print("\n[Step 3] Preprocessing ECG (Butterworth lowpass)...")
+df3[ECG_SIGNAL_COL] = df3[ECG_SIGNAL_COL].apply(
+    lambda data: pplib.butterworth_filter(
+        data,
+        filter_topology="lowpass",
+        order=ECG_LPF_ORDER,
+        fs=ECG_FS,
+        fc=ECG_LPF_FC,
+    )
+)
+
+# %% -------------------------
+# %% Build 3-class target from manual annotations (ECG_manual)
+# %% -------------------------
+df3[Y_MANUAL_COL_RENAMED] = pd.to_numeric(df3[Y_MANUAL_COL_RENAMED], errors="coerce")
+df3 = df3.dropna(subset=[Y_MANUAL_COL_RENAMED]).copy()
+
+df3["y_3class_str"] = df3[Y_MANUAL_COL_RENAMED].astype(int).map(RELABEL_MAP)
+df3 = df3.dropna(subset=["y_3class_str"]).copy()
+
+le3 = LabelEncoder()
+le3.fit(CLASS_ORDER)
+df3["y_3class"] = le3.transform(df3["y_3class_str"].values)
+
+print("\n[Step 3] 3-class distribution:")
+print(df3["y_3class_str"].value_counts())
+
+# %% -------------------------
+# %% Extract ALL unimodal ECG SQIs for each signal (ecg_unimodal_sqi_test-style)
+# %% -------------------------
+def extract_all_ecg_sqi_features(ecg_sig, fs=ECG_FS):
+    """
+    Extract all unimodal ECG SQIs for one signal.
+    Each SQI is isolated in its own try/except so partial results survive.
+    """
+    try:
+        x = np.asarray(ecg_sig, dtype=float).squeeze()
+        if x.ndim != 1 or len(x) < int(0.5 * fs):
+            return {k: np.nan for k in FEATURE_COLS_STEP3}
+    except Exception:
+        return {k: np.nan for k in FEATURE_COLS_STEP3}
+
+    out = {}
+
+    # Functions per your snippet
+    try: out["bSQI"] = _safe_float(sqi_ecg_lib.bSQI(x, fs))
+    except Exception: out["bSQI"] = np.nan
+
+    try: out["pSQI"] = _safe_float(sqi_ecg_lib.pSQI(x, fs))
+    except Exception: out["pSQI"] = np.nan
+
+    try: out["sSQI"] = _safe_float(sqi_ecg_lib.sSQI(x))
+    except Exception: out["sSQI"] = np.nan
+
+    try: out["kSQI"] = _safe_float(sqi_ecg_lib.kSQI(x))
+    except Exception: out["kSQI"] = np.nan
+
+    try: out["fSQI"] = _safe_float(sqi_ecg_lib.fSQI(x, fs))
+    except Exception: out["fSQI"] = np.nan
+
+    try: out["basSQI"] = _safe_float(sqi_ecg_lib.basSQI(x, fs))
+    except Exception: out["basSQI"] = np.nan
+
+    return out
+
+print("\n[Step 3] Extracting ALL ECG SQIs for all joined signals...")
+feat_df3 = df3[ECG_SIGNAL_COL].apply(lambda sig: pd.Series(extract_all_ecg_sqi_features(sig, fs=ECG_FS)))
+df3 = pd.concat([df3.reset_index(drop=True), feat_df3.reset_index(drop=True)], axis=1)
+
+# Drop rows with missing SQIs (strict policy)
+n_before = len(df3)
+df3 = df3.dropna(subset=FEATURE_COLS_STEP3).copy()
+print(f"[Step 3] Rows before dropping NaNs in SQIs: {n_before}, after: {len(df3)}")
+
+# Save extracted features (audit/debug)
+features3_csv = os.path.join(OUT_DIR_STEP3, "step3_ecg_unimodal_features_extracted.csv")
+df3[["ID", "Auscultation_Point", "y_3class_str"] + FEATURE_COLS_STEP3].to_csv(features3_csv, index=False)
+print(f"[Step 3] Saved extracted features: {features3_csv}")
+
+# %% -------------------------
+# %% ML: Multinomial Logistic Regression (3-class), using ALL ECG SQIs
+# %% -------------------------
+X3 = df3[FEATURE_COLS_STEP3].values
+y3 = df3["y_3class"].values
+
+lr_pipe_step3 = Pipeline([
+    ("scaler", StandardScaler()),
+    ("lr", LogisticRegression(
+        max_iter=2000,
+        class_weight="balanced",
+        multi_class="multinomial",
+        solver="lbfgs",
+        random_state=RANDOM_STATE
+    ))
+])
+
+print("\n[Step 3] Train/test split (stratified) and evaluation...")
+Xtr3, Xte3, ytr3, yte3 = train_test_split(
+    X3, y3,
+    test_size=TEST_SIZE,
+    random_state=RANDOM_STATE,
+    stratify=y3
+)
+
+# evaluate_test_split writes into global OUT_DIR -> temporarily point it to step3 folder
+_OUT_DIR_BACKUP = OUT_DIR
+OUT_DIR = OUT_DIR_STEP3
+
+res3_test = evaluate_test_split(
+    model=lr_pipe_step3,
+    Xtr=Xtr3, Xte=Xte3,
+    ytr=ytr3, yte=yte3,
+    class_labels=np.array([0, 1, 2], dtype=int),
+    class_names=CLASS_ORDER,
+    task_name="Step 3 — LogReg (ECG unimodal ALL SQIs) — 3-class",
+    out_prefix="step3_logreg_ecg_unimodal_allSQI_3class"
+)
+
+print("\n[Step 3] Cross-validated summary metrics...")
+res3_cv = cross_validated_summary(
+    pipeline=lr_pipe_step3,
+    X=X3,
+    y=y3,
+    class_labels=np.array([0, 1, 2], dtype=int),
+    task_name="Step 3 — LogReg (ECG unimodal ALL SQIs) — 3-class"
 )
 
 # restore OUT_DIR
 OUT_DIR = _OUT_DIR_BACKUP
 
-# Save summary table
-summary2_df = pd.DataFrame([
+# Save Step 3 summary
+summary3_df = pd.DataFrame([
     {
-        "experiment": "step2_logreg_pcg_unimodal_allSQI_3class_test",
-        "n_samples": int(len(y2)),
-        "n_features": int(X2.shape[1]),
-        "auc_ovr": res2_test["auc_ovr"],
-        "accuracy": res2_test["accuracy"],
-        "macro_sensitivity": res2_test["macro_sensitivity"],
-        "macro_specificity": res2_test["macro_specificity"],
-        "macro_f1": res2_test["macro_f1"],
+        "experiment": "step3_logreg_ecg_unimodal_allSQI_3class_test",
+        "n_samples": int(len(y3)),
+        "n_features": int(X3.shape[1]),
+        "auc_ovr": res3_test["auc_ovr"],
+        "accuracy": res3_test["accuracy"],
+        "macro_sensitivity": res3_test["macro_sensitivity"],
+        "macro_specificity": res3_test["macro_specificity"],
+        "macro_f1": res3_test["macro_f1"],
     },
     {
-        "experiment": "step2_logreg_pcg_unimodal_allSQI_3class_cv",
-        "n_samples": int(len(y2)),
-        "n_features": int(X2.shape[1]),
-        "auc_ovr": res2_cv["cv_auc_mean"],
-        "accuracy": res2_cv["cv_acc_mean"],
-        "macro_sensitivity": res2_cv["cv_rec_mean"],
-        "macro_specificity": res2_cv["cv_spec_mean"],
-        "macro_f1": res2_cv["cv_f1_mean"],
+        "experiment": "step3_logreg_ecg_unimodal_allSQI_3class_cv",
+        "n_samples": int(len(y3)),
+        "n_features": int(X3.shape[1]),
+        "auc_ovr": res3_cv["cv_auc_mean"],
+        "accuracy": res3_cv["cv_acc_mean"],
+        "macro_sensitivity": res3_cv["cv_rec_mean"],
+        "macro_specificity": res3_cv["cv_spec_mean"],
+        "macro_f1": res3_cv["cv_f1_mean"],
     }
 ])
 
-summary2_csv = os.path.join(OUT_DIR_STEP2, "step2_logreg_pcg_unimodal_allSQI_3class_summary.csv")
-summary2_df.to_csv(summary2_csv, index=False)
+summary3_csv = os.path.join(OUT_DIR_STEP3, "step3_logreg_ecg_unimodal_allSQI_3class_summary.csv")
+summary3_df.to_csv(summary3_csv, index=False)
 
 print("\n" + "=" * 80)
-print("[Step 2 COMPLETE] SUMMARY TABLE")
+print("[Step 3 COMPLETE] SUMMARY TABLE")
 print("=" * 80)
-print(summary2_df.to_string(index=False))
-print(f"\nSaved: {summary2_csv}")
-print(f"Artifacts folder: {OUT_DIR_STEP2}")
+print(summary3_df.to_string(index=False))
+print(f"\nSaved: {summary3_csv}")
+print(f"Artifacts folder: {OUT_DIR_STEP3}")
+
 
 
 # %% =========================
 # %% NEXT STEPS PLACEHOLDER
 # %% =========================
-# Step 3: ECG unimodal SQIs (all) + LogReg (target from manual Excel column C header 'ECG')
-# Step 4: Repeat Step 1–3 with SVM
-# Step 5: Aggregate all results into a final comparison report
+# Step 4: Use outputs of step 2 and step 3, make a min in between them two,
+# and compare with the same ground truth as in step 1. Compare performance 
+# of step 1 and step 4
+# Step 5: Repeat Step 1–3 with SVM
+# Step 6: Aggregate all results into a final comparison report

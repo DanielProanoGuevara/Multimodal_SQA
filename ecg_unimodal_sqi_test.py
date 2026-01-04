@@ -40,15 +40,18 @@ ecg_df['ECG'] = ecg_df['ECG'].apply(
 # %% Feature extraction
 # Test score generation
 
+N=8
 
-bsqi = sqi_ecg_lib.bSQI(ecg_df['ECG'][0], 500)
+plt.plot(ecg_df['ECG'][N])
 
-psqi = sqi_ecg_lib.pSQI(ecg_df['ECG'][0], 500)
+bsqi = sqi_ecg_lib.bSQI(ecg_df['ECG'][N], 500)
 
-ssqi = sqi_ecg_lib.sSQI(ecg_df['ECG'][0])
+psqi = sqi_ecg_lib.pSQI(ecg_df['ECG'][N], 500)
 
-ksqi = sqi_ecg_lib.kSQI(ecg_df['ECG'][0])
+ssqi = sqi_ecg_lib.sSQI(ecg_df['ECG'][N])
 
-fsqi = sqi_ecg_lib.fSQI(ecg_df['ECG'][0], 500)
+ksqi = sqi_ecg_lib.kSQI(ecg_df['ECG'][N])
 
-bassqi = sqi_ecg_lib.basSQI(ecg_df['ECG'][0], 500)
+fsqi = sqi_ecg_lib.fSQI(ecg_df['ECG'][N], 500)
+
+bassqi = sqi_ecg_lib.basSQI(ecg_df['ECG'][N], 500)
