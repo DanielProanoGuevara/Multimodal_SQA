@@ -889,13 +889,133 @@ print(summary3_df.to_string(index=False))
 print(f"\nSaved: {summary3_csv}")
 print(f"Artifacts folder: {OUT_DIR_STEP3}")
 
+# %% =========================
+# %% STEP 4 — Multimodal fusion (MIN) of ECG + PCG predictions
+# %% NO refitting — inference only
+# %% Compare vs Step 1 LogReg
+# %% =========================
+
+OUT_DIR_STEP4 = "exp_step4_fusion_min_vs_step1"
+os.makedirs(OUT_DIR_STEP4, exist_ok=True)
+
+print("\n[Step 4] Multimodal fusion: MIN(PCG_pred, ECG_pred) vs mSQA_min")
+
+# ------------------------------------------------------------------
+# Align samples: use SAME TEST SET as Step 1
+# ------------------------------------------------------------------
+# Step 1 test indices already defined by Xte / yte
+# We reconstruct them via keys to stay robust
+
+def make_key(df):
+    return df["ID"].astype(str) + "||" + df["Auscultation_Point"].astype(str)
+
+df1["_key"] = make_key(df1)
+df2["_key"] = make_key(df2)
+df3["_key"] = make_key(df3)
+
+test_keys = set(df1.iloc[yte.index if hasattr(yte, "index") else range(len(yte))]["_key"])
+
+df2_test = df2[df2["_key"].isin(test_keys)].copy()
+df3_test = df3[df3["_key"].isin(test_keys)].copy()
+df1_test = df1[df1["_key"].isin(test_keys)].copy()
+
+# Ensure strict alignment
+df2_test = df2_test.sort_values("_key")
+df3_test = df3_test.sort_values("_key")
+df1_test = df1_test.sort_values("_key")
+
+y_true = df1_test["y_3class"].values.astype(int)
+
+# ------------------------------------------------------------------
+# Inference ONLY (no fitting)
+# ------------------------------------------------------------------
+X2_test = df2_test[FEATURE_COLS_STEP2].values
+X3_test = df3_test[FEATURE_COLS_STEP3].values
+
+yhat_pcg = lr_pipe_step2.predict(X2_test)
+yhat_ecg = lr_pipe_step3.predict(X3_test)
+
+# Fusion rule (ordinal MIN)
+yhat_fused = np.minimum(yhat_pcg, yhat_ecg)
+
+# ------------------------------------------------------------------
+# Metrics
+# ------------------------------------------------------------------
+cm_fused = confusion_matrix(y_true, yhat_fused, labels=[0, 1, 2])
+
+acc_fused = accuracy_score(y_true, yhat_fused)
+f1_fused = f1_score(y_true, yhat_fused, average="macro")
+sens_fused = recall_score(y_true, yhat_fused, average="macro")
+spec_fused = np.mean(compute_specificity_from_cm(cm_fused))
+
+# AUC OvR
+y_true_bin = label_binarize(y_true, classes=[0, 1, 2])
+yhat_bin = label_binarize(yhat_fused, classes=[0, 1, 2])
+auc_fused = roc_auc_score(y_true_bin, yhat_bin, multi_class="ovr")
+
+# ------------------------------------------------------------------
+# Reporting
+# ------------------------------------------------------------------
+print("\n" + "=" * 70)
+print("STEP 4 — FUSED MIN(PCG, ECG) vs mSQA_min (TEST SET)")
+print("=" * 70)
+print(f"AUC OvR:            {auc_fused:.4f}")
+print(f"Accuracy:           {acc_fused:.4f}")
+print(f"Macro Sensitivity:  {sens_fused:.4f}")
+print(f"Macro Specificity:  {spec_fused:.4f}")
+print(f"Macro F1:           {f1_fused:.4f}")
+
+per_cls_fused = per_class_metrics_from_cm(cm_fused, CLASS_ORDER)
+print("\nPer-class metrics:")
+print(per_cls_fused.to_string(index=False))
+
+# Confusion matrix
+cm_png = os.path.join(OUT_DIR_STEP4, "step4_fusion_min_cm_percent.png")
+save_confusion_matrix_percent(
+    y_true=y_true,
+    y_pred=yhat_fused,
+    labels=[0, 1, 2],
+    display_labels=CLASS_ORDER,
+    title="Fusion MIN(PCG, ECG) vs mSQA_min — Confusion Matrix (%)",
+    out_png=cm_png
+)
+
+# ------------------------------------------------------------------
+# COMPARISON vs STEP 1
+# ------------------------------------------------------------------
+comparison_df = pd.DataFrame([
+    {
+        "approach": "Step 1 — Alignment LogReg",
+        "accuracy": res1_test["accuracy"],
+        "macro_f1": res1_test["macro_f1"],
+        "macro_sensitivity": res1_test["macro_sensitivity"],
+        "macro_specificity": res1_test["macro_specificity"],
+        "auc_ovr": res1_test["auc_ovr"],
+    },
+    {
+        "approach": "Step 4 — Fusion MIN(PCG, ECG)",
+        "accuracy": acc_fused,
+        "macro_f1": f1_fused,
+        "macro_sensitivity": sens_fused,
+        "macro_specificity": spec_fused,
+        "auc_ovr": auc_fused,
+    },
+])
+
+comparison_csv = os.path.join(OUT_DIR_STEP4, "step4_vs_step1_comparison.csv")
+comparison_df.to_csv(comparison_csv, index=False)
+
+print("\n" + "=" * 70)
+print("STEP 4 vs STEP 1 — METRIC COMPARISON")
+print("=" * 70)
+print(comparison_df.to_string(index=False))
+print(f"\nSaved comparison table: {comparison_csv}")
+print(f"Artifacts folder: {OUT_DIR_STEP4}")
+
 
 
 # %% =========================
 # %% NEXT STEPS PLACEHOLDER
 # %% =========================
-# Step 4: Use outputs of step 2 and step 3, make a min in between them two,
-# and compare with the same ground truth as in step 1. Compare performance 
-# of step 1 and step 4
 # Step 5: Repeat Step 1–3 with SVM
 # Step 6: Aggregate all results into a final comparison report
