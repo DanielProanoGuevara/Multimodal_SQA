@@ -893,6 +893,7 @@ print(f"Artifacts folder: {OUT_DIR_STEP3}")
 # %% STEP 4 — Multimodal fusion (MIN) of ECG + PCG predictions
 # %% NO refitting — inference only
 # %% Compare vs Step 1 LogReg
+# %% + Per-class metrics section (requested)
 # %% =========================
 
 OUT_DIR_STEP4 = "exp_step4_fusion_min_vs_step1"
@@ -903,26 +904,44 @@ print("\n[Step 4] Multimodal fusion: MIN(PCG_pred, ECG_pred) vs mSQA_min")
 # ------------------------------------------------------------------
 # Align samples: use SAME TEST SET as Step 1
 # ------------------------------------------------------------------
-# Step 1 test indices already defined by Xte / yte
-# We reconstruct them via keys to stay robust
-
 def make_key(df):
     return df["ID"].astype(str) + "||" + df["Auscultation_Point"].astype(str)
 
+# Keep keys consistent
 df1["_key"] = make_key(df1)
 df2["_key"] = make_key(df2)
 df3["_key"] = make_key(df3)
 
-test_keys = set(df1.iloc[yte.index if hasattr(yte, "index") else range(len(yte))]["_key"])
+# Rebuild the Step-1 test keys by recomputing the split on df1 (same seed & stratification),
+# then using the resulting indices. This avoids relying on yte.index existence.
+alignment_metrics = [c for c in df1.columns if str(c).startswith("alignment_metric")]
+if not alignment_metrics:
+    raise ValueError("[Step 4] alignment_metric* columns not found in df1.")
 
-df2_test = df2[df2["_key"].isin(test_keys)].copy()
-df3_test = df3[df3["_key"].isin(test_keys)].copy()
-df1_test = df1[df1["_key"].isin(test_keys)].copy()
+X1_all = df1[alignment_metrics].values
+y1_all = df1["y_3class"].values.astype(int)
+idx_all = np.arange(len(df1))
 
-# Ensure strict alignment
-df2_test = df2_test.sort_values("_key")
-df3_test = df3_test.sort_values("_key")
-df1_test = df1_test.sort_values("_key")
+_, idx_te = train_test_split(
+    idx_all,
+    test_size=TEST_SIZE,
+    random_state=RANDOM_STATE,
+    stratify=y1_all
+)
+
+test_keys = set(df1.iloc[idx_te]["_key"].values)
+
+# Subset test rows for each df and strictly align by key
+df1_test = df1[df1["_key"].isin(test_keys)].copy().sort_values("_key")
+df2_test = df2[df2["_key"].isin(test_keys)].copy().sort_values("_key")
+df3_test = df3[df3["_key"].isin(test_keys)].copy().sort_values("_key")
+
+# Assert alignment
+if not (df1_test["_key"].values == df2_test["_key"].values).all() or not (df1_test["_key"].values == df3_test["_key"].values).all():
+    raise RuntimeError(
+        "[Step 4] Key misalignment between df1_test/df2_test/df3_test. "
+        "This means the test subsets do not perfectly overlap."
+    )
 
 y_true = df1_test["y_3class"].values.astype(int)
 
@@ -932,30 +951,29 @@ y_true = df1_test["y_3class"].values.astype(int)
 X2_test = df2_test[FEATURE_COLS_STEP2].values
 X3_test = df3_test[FEATURE_COLS_STEP3].values
 
-yhat_pcg = lr_pipe_step2.predict(X2_test)
-yhat_ecg = lr_pipe_step3.predict(X3_test)
+yhat_pcg = lr_pipe_step2.predict(X2_test).astype(int)
+yhat_ecg = lr_pipe_step3.predict(X3_test).astype(int)
 
 # Fusion rule (ordinal MIN)
-yhat_fused = np.minimum(yhat_pcg, yhat_ecg)
+yhat_fused = np.minimum(yhat_pcg, yhat_ecg).astype(int)
 
 # ------------------------------------------------------------------
-# Metrics
+# Metrics (aggregated)
 # ------------------------------------------------------------------
-cm_fused = confusion_matrix(y_true, yhat_fused, labels=[0, 1, 2])
+labels_int = np.array([0, 1, 2], dtype=int)
+
+cm_fused = confusion_matrix(y_true, yhat_fused, labels=labels_int)
 
 acc_fused = accuracy_score(y_true, yhat_fused)
 f1_fused = f1_score(y_true, yhat_fused, average="macro")
 sens_fused = recall_score(y_true, yhat_fused, average="macro")
-spec_fused = np.mean(compute_specificity_from_cm(cm_fused))
+spec_fused = float(np.mean(compute_specificity_from_cm(cm_fused)))
 
 # AUC OvR
-y_true_bin = label_binarize(y_true, classes=[0, 1, 2])
-yhat_bin = label_binarize(yhat_fused, classes=[0, 1, 2])
+y_true_bin = label_binarize(y_true, classes=labels_int)
+yhat_bin = label_binarize(yhat_fused, classes=labels_int)
 auc_fused = roc_auc_score(y_true_bin, yhat_bin, multi_class="ovr")
 
-# ------------------------------------------------------------------
-# Reporting
-# ------------------------------------------------------------------
 print("\n" + "=" * 70)
 print("STEP 4 — FUSED MIN(PCG, ECG) vs mSQA_min (TEST SET)")
 print("=" * 70)
@@ -965,23 +983,33 @@ print(f"Macro Sensitivity:  {sens_fused:.4f}")
 print(f"Macro Specificity:  {spec_fused:.4f}")
 print(f"Macro F1:           {f1_fused:.4f}")
 
+# ------------------------------------------------------------------
+# Per-class metrics
+# ------------------------------------------------------------------
 per_cls_fused = per_class_metrics_from_cm(cm_fused, CLASS_ORDER)
-print("\nPer-class metrics:")
+
+print("\n" + "-" * 70)
+print("STEP 4 — PER-CLASS METRICS (Fusion MIN)")
+print("-" * 70)
 print(per_cls_fused.to_string(index=False))
 
-# Confusion matrix
+per_cls_csv = os.path.join(OUT_DIR_STEP4, "step4_fusion_min_per_class_metrics.csv")
+per_cls_fused.to_csv(per_cls_csv, index=False)
+print(f"\nSaved per-class metrics: {per_cls_csv}")
+
+# Confusion matrix (%)
 cm_png = os.path.join(OUT_DIR_STEP4, "step4_fusion_min_cm_percent.png")
 save_confusion_matrix_percent(
     y_true=y_true,
     y_pred=yhat_fused,
-    labels=[0, 1, 2],
+    labels=labels_int,
     display_labels=CLASS_ORDER,
     title="Fusion MIN(PCG, ECG) vs mSQA_min — Confusion Matrix (%)",
     out_png=cm_png
 )
 
 # ------------------------------------------------------------------
-# COMPARISON vs STEP 1
+# Comparison vs STEP 1 metrics (already computed in res1_test)
 # ------------------------------------------------------------------
 comparison_df = pd.DataFrame([
     {
@@ -1013,6 +1041,293 @@ print(f"\nSaved comparison table: {comparison_csv}")
 print(f"Artifacts folder: {OUT_DIR_STEP4}")
 
 
+# %% =========================
+# %% STEP 5 — Feature-level multimodal fusion (PCG SQIs + ECG SQIs)
+# %% Ground truth: mSQA_min
+# %% Model: Multinomial Logistic Regression
+# %% =========================
+
+OUT_DIR_STEP5 = "exp_step5_multimodal_features_logreg_3class"
+os.makedirs(OUT_DIR_STEP5, exist_ok=True)
+
+print("\n[Step 5] Multimodal feature fusion (PCG SQIs + ECG SQIs) vs mSQA_min")
+
+# ------------------------------------------------------------------
+# Build consistent keys
+# ------------------------------------------------------------------
+def make_key(df):
+    return df["ID"].astype(str) + "||" + df["Auscultation_Point"].astype(str)
+
+df1["_key"] = make_key(df1)   # Step 1 (mSQA_min ground truth)
+df2["_key"] = make_key(df2)   # PCG SQIs
+df3["_key"] = make_key(df3)   # ECG SQIs
+
+# ------------------------------------------------------------------
+# Merge ALL features with mSQA_min ground truth
+# ------------------------------------------------------------------
+print("[Step 5] Merging feature tables...")
+
+df5 = (
+    df1[["_key", "ID", "Auscultation_Point", "y_3class", "y_3class_str"]]
+    .merge(
+        df2[["_key"] + FEATURE_COLS_STEP2],
+        on="_key",
+        how="inner",
+    )
+    .merge(
+        df3[["_key"] + FEATURE_COLS_STEP3],
+        on="_key",
+        how="inner",
+    )
+)
+
+print(f"  rows after merge: {len(df5)}")
+print(f"  total features:  {len(FEATURE_COLS_STEP2) + len(FEATURE_COLS_STEP3)}")
+
+# ------------------------------------------------------------------
+# Feature matrix and target
+# ------------------------------------------------------------------
+FEATURE_COLS_STEP5 = FEATURE_COLS_STEP2 + FEATURE_COLS_STEP3
+
+X5 = df5[FEATURE_COLS_STEP5].values
+y5 = df5["y_3class"].values.astype(int)
+
+print("\n[Step 5] 3-class distribution:")
+print(df5["y_3class_str"].value_counts())
+
+# ------------------------------------------------------------------
+# Model (same configuration as previous steps)
+# ------------------------------------------------------------------
+lr_pipe_step5 = Pipeline([
+    ("scaler", StandardScaler()),
+    ("lr", LogisticRegression(
+        max_iter=2000,
+        class_weight="balanced",
+        multi_class="multinomial",
+        solver="lbfgs",
+        random_state=RANDOM_STATE
+    ))
+])
+
+# ------------------------------------------------------------------
+# Train / Test split (stratified)
+# ------------------------------------------------------------------
+print("\n[Step 5] Train/test evaluation...")
+Xtr5, Xte5, ytr5, yte5 = train_test_split(
+    X5, y5,
+    test_size=TEST_SIZE,
+    random_state=RANDOM_STATE,
+    stratify=y5
+)
+
+# Redirect outputs
+_OUT_DIR_BACKUP = OUT_DIR
+OUT_DIR = OUT_DIR_STEP5
+
+res5_test = evaluate_test_split(
+    model=lr_pipe_step5,
+    Xtr=Xtr5, Xte=Xte5,
+    ytr=ytr5, yte=yte5,
+    class_labels=np.array([0, 1, 2], dtype=int),
+    class_names=CLASS_ORDER,
+    task_name="Step 5 — LogReg (PCG SQIs + ECG SQIs) → mSQA_min",
+    out_prefix="step5_multimodal_features_logreg_3class"
+)
+
+# ------------------------------------------------------------------
+# Cross-validated summary
+# ------------------------------------------------------------------
+print("\n[Step 5] Cross-validated summary metrics...")
+res5_cv = cross_validated_summary(
+    pipeline=lr_pipe_step5,
+    X=X5,
+    y=y5,
+    class_labels=np.array([0, 1, 2], dtype=int),
+    task_name="Step 5 — LogReg (PCG SQIs + ECG SQIs) → mSQA_min"
+)
+
+# Restore OUT_DIR
+OUT_DIR = _OUT_DIR_BACKUP
+
+# ------------------------------------------------------------------
+# Save summary table
+# ------------------------------------------------------------------
+summary5_df = pd.DataFrame([
+    {
+        "experiment": "step5_multimodal_features_logreg_test",
+        "n_samples": int(len(y5)),
+        "n_features": int(X5.shape[1]),
+        "auc_ovr": res5_test["auc_ovr"],
+        "accuracy": res5_test["accuracy"],
+        "macro_sensitivity": res5_test["macro_sensitivity"],
+        "macro_specificity": res5_test["macro_specificity"],
+        "macro_f1": res5_test["macro_f1"],
+    },
+    {
+        "experiment": "step5_multimodal_features_logreg_cv",
+        "n_samples": int(len(y5)),
+        "n_features": int(X5.shape[1]),
+        "auc_ovr": res5_cv["cv_auc_mean"],
+        "accuracy": res5_cv["cv_acc_mean"],
+        "macro_sensitivity": res5_cv["cv_rec_mean"],
+        "macro_specificity": res5_cv["cv_spec_mean"],
+        "macro_f1": res5_cv["cv_f1_mean"],
+    }
+])
+
+summary5_csv = os.path.join(
+    OUT_DIR_STEP5,
+    "step5_multimodal_features_logreg_3class_summary.csv"
+)
+summary5_df.to_csv(summary5_csv, index=False)
+
+print("\n" + "=" * 80)
+print("[Step 5 COMPLETE] SUMMARY TABLE")
+print("=" * 80)
+print(summary5_df.to_string(index=False))
+print(f"\nSaved: {summary5_csv}")
+print(f"Artifacts folder: {OUT_DIR_STEP5}")
+
+# %% =========================
+# %% STEP 6 — Unified comparison (macro + per-class) for Steps 1, 4, 5
+# %% Adds delta columns vs Step 1
+# %% =========================
+
+OUT_DIR_STEP6 = "exp_step6_unified_comparison"
+os.makedirs(OUT_DIR_STEP6, exist_ok=True)
+
+print("\n[Step 6] Building unified comparison tables (macro + per-class) for Steps 1, 4, 5...")
+
+# ------------------------------------------------------------------
+# Preconditions (expected objects from previous steps)
+# ------------------------------------------------------------------
+# Step 1
+if "res1_test" not in globals() or "per_class_df" not in res1_test:
+    raise RuntimeError("[Step 6] Missing res1_test['per_class_df']. Ensure Step 1 ran and returned per-class metrics.")
+
+# Step 4
+if "per_cls_fused" not in globals():
+    raise RuntimeError("[Step 6] Missing per_cls_fused. Ensure Step 4 ran with per-class metrics section.")
+if not all(v in globals() for v in ["auc_fused", "acc_fused", "sens_fused", "spec_fused", "f1_fused"]):
+    raise RuntimeError("[Step 6] Missing Step 4 macro metrics (auc_fused, acc_fused, sens_fused, spec_fused, f1_fused).")
+
+# Step 5
+if "res5_test" not in globals() or "per_class_df" not in res5_test:
+    raise RuntimeError("[Step 6] Missing res5_test['per_class_df']. Ensure Step 5 ran and returned per-class metrics.")
+
+# ------------------------------------------------------------------
+# 1) MACRO metrics table (+ deltas vs Step 1)
+# ------------------------------------------------------------------
+macro_df = pd.DataFrame([
+    {
+        "approach": "Step 1 — Alignment metrics (LogReg)",
+        "fusion_level": "Physiological / temporal",
+        "auc_ovr": res1_test["auc_ovr"],
+        "accuracy": res1_test["accuracy"],
+        "macro_sensitivity": res1_test["macro_sensitivity"],
+        "macro_specificity": res1_test["macro_specificity"],
+        "macro_f1": res1_test["macro_f1"],
+    },
+    {
+        "approach": "Step 4 — Decision fusion MIN(ECG, PCG)",
+        "fusion_level": "Decision-level",
+        "auc_ovr": auc_fused,
+        "accuracy": acc_fused,
+        "macro_sensitivity": sens_fused,
+        "macro_specificity": spec_fused,
+        "macro_f1": f1_fused,
+    },
+    {
+        "approach": "Step 5 — Feature fusion (ECG SQIs + PCG SQIs)",
+        "fusion_level": "Feature-level",
+        "auc_ovr": res5_test["auc_ovr"],
+        "accuracy": res5_test["accuracy"],
+        "macro_sensitivity": res5_test["macro_sensitivity"],
+        "macro_specificity": res5_test["macro_specificity"],
+        "macro_f1": res5_test["macro_f1"],
+    },
+])
+
+# Delta columns vs Step 1
+baseline = macro_df.loc[macro_df["approach"].str.startswith("Step 1"), ["auc_ovr", "accuracy", "macro_sensitivity", "macro_specificity", "macro_f1"]].iloc[0]
+for m in ["auc_ovr", "accuracy", "macro_sensitivity", "macro_specificity", "macro_f1"]:
+    macro_df[f"delta_{m}_vs_step1"] = macro_df[m] - float(baseline[m])
+
+macro_csv = os.path.join(OUT_DIR_STEP6, "macro_comparison_steps_1_4_5.csv")
+macro_df.to_csv(macro_csv, index=False)
+
+print("\n" + "=" * 100)
+print("MACRO COMPARISON (Steps 1, 4, 5) + Δ vs Step 1")
+print("=" * 100)
+print(macro_df.to_string(index=False))
+print(f"\nSaved: {macro_csv}")
+
+# ------------------------------------------------------------------
+# 2) PER-CLASS comparison table (+ deltas vs Step 1)
+# ------------------------------------------------------------------
+def _prep_per_class(df_per: pd.DataFrame, approach: str) -> pd.DataFrame:
+    """Standardize per-class frame to expected columns and tag with approach."""
+    dfp = df_per.copy()
+    expected = ["class", "support", "precision", "sensitivity_recall", "specificity", "f1"]
+    missing = [c for c in expected if c not in dfp.columns]
+    if missing:
+        raise RuntimeError(f"[Step 6] Per-class df missing columns {missing} for approach={approach}. Columns: {list(dfp.columns)}")
+    dfp["approach"] = approach
+    # reorder
+    return dfp[["approach"] + expected]
+
+pc_step1 = _prep_per_class(res1_test["per_class_df"], "Step 1 — Alignment metrics (LogReg)")
+pc_step4 = _prep_per_class(per_cls_fused, "Step 4 — Decision fusion MIN(ECG, PCG)")
+pc_step5 = _prep_per_class(res5_test["per_class_df"], "Step 5 — Feature fusion (ECG SQIs + PCG SQIs)")
+
+per_class_long = pd.concat([pc_step1, pc_step4, pc_step5], axis=0, ignore_index=True)
+
+# Compute deltas vs Step 1 per class for each metric
+step1_ref = pc_step1.set_index("class")[["precision", "sensitivity_recall", "specificity", "f1"]].copy()
+
+def add_deltas(df_long: pd.DataFrame) -> pd.DataFrame:
+    out = df_long.copy()
+    for metric in ["precision", "sensitivity_recall", "specificity", "f1"]:
+        out[f"delta_{metric}_vs_step1"] = out.apply(
+            lambda r: r[metric] - float(step1_ref.loc[r["class"], metric]) if r["class"] in step1_ref.index else np.nan,
+            axis=1
+        )
+    return out
+
+per_class_long = add_deltas(per_class_long)
+
+# Optional: also produce a wide-format table (one row per class, grouped columns per approach)
+wide_cols = ["precision", "sensitivity_recall", "specificity", "f1"]
+per_class_wide = per_class_long.pivot_table(
+    index="class",
+    columns="approach",
+    values=wide_cols,
+    aggfunc="first"
+)
+
+# Flatten MultiIndex columns for CSV friendliness
+per_class_wide.columns = [f"{m}__{a}" for (m, a) in per_class_wide.columns]
+per_class_wide = per_class_wide.reset_index()
+
+per_class_long_csv = os.path.join(OUT_DIR_STEP6, "per_class_comparison_long_steps_1_4_5.csv")
+per_class_wide_csv = os.path.join(OUT_DIR_STEP6, "per_class_comparison_wide_steps_1_4_5.csv")
+
+per_class_long.to_csv(per_class_long_csv, index=False)
+per_class_wide.to_csv(per_class_wide_csv, index=False)
+
+print("\n" + "=" * 100)
+print("PER-CLASS COMPARISON (LONG) + Δ vs Step 1")
+print("=" * 100)
+print(per_class_long.to_string(index=False))
+print(f"\nSaved (long): {per_class_long_csv}")
+
+print("\n" + "=" * 100)
+print("PER-CLASS COMPARISON (WIDE)")
+print("=" * 100)
+print(per_class_wide.to_string(index=False))
+print(f"\nSaved (wide): {per_class_wide_csv}")
+
+print(f"\nArtifacts folder: {OUT_DIR_STEP6}")
 
 # %% =========================
 # %% NEXT STEPS PLACEHOLDER
