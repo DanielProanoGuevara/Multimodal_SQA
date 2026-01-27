@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 All features fusion (PCG SQIs + ECG SQIs + alignment_metric*) + 3-class Logistic Regression (OOF-CV)
-+ Feature significance analysis
++ (optional) Feature significance analysis
 
 File
 ----
@@ -39,18 +39,20 @@ Feature significance analysis (additional)
 A) Coefficient-based importance from a final model fit on ALL data:
    - absolute standardized coefficient magnitude (per class and aggregated)
    - saved as CSV
-B) Permutation importance (macro_f1 scoring) computed on OOF predictions surrogate:
-   - fit model on full data, run permutation on full data with CV-aware caution
+B) Permutation importance (macro_f1 scoring) on full dataset (not CV-aware; complementary):
    - saved as CSV
-C) (Optional) p-values for coefficients via statsmodels MNLogit on standardized features:
-   - saved as CSV if statsmodels is installed; otherwise skipped gracefully.
+C) Optional p-values for coefficients via statsmodels MNLogit:
+   - To avoid numerical warnings/instability, we use a stabilized MNLogit:
+     near-constant drop + high-corr drop + VIF pruning + RobustScaler + clipping.
+   - If fit is unstable (non-finite params/pvalues), we SKIP exporting p-values.
 
-Notes
------
-- Key matching convention (robust join):
-    ID == Trial (as string)
-    Auscultation_Point == Spot (normalized: remove '_' and uppercase)
-- Feature tables are merged by (ID, normalized point) first, then joined with manual mSQA_min.
+Fixes included
+--------------
+1) sklearn FutureWarning about `multi_class`:
+   - Removed `multi_class` from LogisticRegression (default will be multinomial in future).
+   - roc_auc_score multi_class="ovr" remains correct (that's not the warning).
+2) statsmodels overflow/divide warnings:
+   - Stabilized MNLogit fitting (see C above), and skip export if unstable.
 
 @author: Daniel Proaño-Guevara
 """
@@ -84,6 +86,7 @@ except Exception as e:
         f"Install it and rerun. Root error: {e}"
     )
 
+# Keep console clean from generic sklearn user warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 # %% Global config
@@ -105,7 +108,7 @@ ECG_FEAT_PATH = os.path.join(
     "step3_ecg_unimodal_features_extracted.csv",
 )
 
-# alignment metrics pickle (relative to this script: tbme_code/5_feature_fusion -> ../../../ulsge_quality_metrics.pkl)
+# alignment metrics pickle (relative: tbme_code/5_feature_fusion -> ../../../ulsge_quality_metrics.pkl)
 ALIGN_PKL_PATH = os.path.join(THIS_DIR, "..", "..", "..", "ulsge_quality_metrics.pkl")
 
 # manual excel (same known location)
@@ -133,6 +136,13 @@ PCG_SQI_COLS = [
     "diff_peak_sqi", "svdSQI"
 ]
 ECG_SQI_COLS = ["bSQI", "pSQI", "sSQI", "kSQI", "fSQI", "basSQI"]
+
+# Significance toggles
+RUN_COEF_IMPORTANCE = True
+RUN_PERMUTATION_IMPORTANCE = True
+
+# Recommended default: keep p-values optional, stabilized, and skip safely if unstable.
+RUN_STATSMODELS_PVALUES = True
 
 
 # %% Utilities
@@ -205,6 +215,25 @@ def mean_std(x: np.ndarray) -> tuple[float, float]:
     return mu, sd
 
 
+def drop_near_constant(Xdf: pd.DataFrame, eps: float = 1e-12) -> pd.DataFrame:
+    """Drop near-constant numeric columns (variance <= eps)."""
+    if Xdf.empty:
+        return Xdf
+    vari = Xdf.var(axis=0, numeric_only=True)
+    keep = vari[vari > eps].index
+    return Xdf.loc[:, keep].copy()
+
+
+def drop_highly_correlated(Xdf: pd.DataFrame, thresh: float = 0.98) -> pd.DataFrame:
+    """Drop one of any pair of features with |corr| >= thresh (simple greedy)."""
+    if Xdf.shape[1] <= 1:
+        return Xdf
+    corr = Xdf.corr().abs()
+    upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+    to_drop = [col for col in upper.columns if any(upper[col] >= thresh)]
+    return Xdf.drop(columns=to_drop).copy()
+
+
 def merge_pcg_ecg_features(pcg_df: pd.DataFrame, ecg_df: pd.DataFrame) -> pd.DataFrame:
     """
     Merge Step2 PCG features and Step3 ECG features by (ID, normalized point).
@@ -248,9 +277,7 @@ def merge_pcg_ecg_features(pcg_df: pd.DataFrame, ecg_df: pd.DataFrame) -> pd.Dat
 
 
 def merge_alignment_metrics(base_df: pd.DataFrame, align_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Merge alignment_metric* columns into base_df by (ID, normalized point).
-    """
+    """Merge alignment_metric* columns into base_df by (ID, normalized point)."""
     a = align_df.copy()
     b = base_df.copy()
 
@@ -310,6 +337,7 @@ def merge_with_manual_msqa(allfeat_df: pd.DataFrame, manual_df: pd.DataFrame) ->
         how="inner",
     )
     out = out.drop(columns=["_k_point", "_k_spot", "Trial"])
+
     cols = ["ID", "Auscultation_Point", "mSQA_min"] + [
         c for c in out.columns if c not in ["ID", "Auscultation_Point", "mSQA_min"]
     ]
@@ -368,13 +396,12 @@ df["Auscultation_Point"] = df["Auscultation_Point"].astype(str)
 class_labels = np.array([0, 1, 2], dtype=int)
 class_names = CLASS_ORDER
 
-# %% Model pipeline
+# %% Model pipeline (FIX: removed multi_class to avoid FutureWarning)
 lr_pipe = Pipeline([
     ("scaler", StandardScaler()),
     ("lr", LogisticRegression(
         max_iter=4000,
         class_weight="balanced",
-        multi_class="multinomial",
         solver="lbfgs",
         random_state=RANDOM_STATE,
     ))
@@ -476,97 +503,134 @@ print("[All features] Feature significance analysis...")
 
 # Fit final model on ALL data (for coefficient inspection)
 lr_pipe.fit(X, y)
-
 scaler = lr_pipe.named_steps["scaler"]
 lr = lr_pipe.named_steps["lr"]
 
-# Coefficients are in standardized feature space because of StandardScaler.
-# For multinomial: shape (n_classes, n_features)
-coef = lr.coef_
-if coef.ndim != 2 or coef.shape[1] != len(feature_cols):
-    raise RuntimeError("Unexpected coefficient shape from LogisticRegression.")
+if RUN_COEF_IMPORTANCE:
+    coef = lr.coef_
+    if coef.ndim != 2 or coef.shape[1] != len(feature_cols):
+        raise RuntimeError("Unexpected coefficient shape from LogisticRegression.")
 
-coef_df = pd.DataFrame(coef, columns=feature_cols, index=[f"class_{c}" for c in class_names])
+    coef_df = pd.DataFrame(coef, columns=feature_cols, index=[f"class_{c}" for c in class_names])
 
-# Aggregate importance: mean absolute coefficient across classes (simple, stable)
-agg_importance = np.mean(np.abs(coef), axis=0)
-coef_importance_df = pd.DataFrame({
-    "feature": feature_cols,
-    "mean_abs_coef_across_classes": agg_importance.astype(float),
-}).sort_values("mean_abs_coef_across_classes", ascending=False)
+    agg_importance = np.mean(np.abs(coef), axis=0)
+    coef_importance_df = pd.DataFrame({
+        "feature": feature_cols,
+        "mean_abs_coef_across_classes": agg_importance.astype(float),
+    }).sort_values("mean_abs_coef_across_classes", ascending=False)
 
-# Also export per-class coefficients (signed)
-coef_long_rows = []
-for ci, cname in enumerate(class_names):
-    for fi, fname in enumerate(feature_cols):
-        coef_long_rows.append({
-            "class": cname,
-            "feature": fname,
-            "coef": float(coef[ci, fi]),
-            "abs_coef": float(abs(coef[ci, fi])),
-        })
-coef_long_df = pd.DataFrame(coef_long_rows).sort_values(["class", "abs_coef"], ascending=[True, False])
-
-coef_importance_csv = os.path.join(OUT_DIR, "all_features_logreg_coef_importance.csv")
-coef_long_csv = os.path.join(OUT_DIR, "all_features_logreg_coef_by_class.csv")
-coef_importance_df.to_csv(coef_importance_csv, index=False)
-coef_long_df.to_csv(coef_long_csv, index=False)
-
-# Permutation importance (on full dataset; use macro_f1 as primary)
-# Note: permutation_importance is not CV-aware; used here as complementary importance.
-perm = permutation_importance(
-    lr_pipe,
-    X,
-    y,
-    n_repeats=25,
-    random_state=RANDOM_STATE,
-    scoring="f1_macro",
-)
-
-perm_df = pd.DataFrame({
-    "feature": feature_cols,
-    "perm_importance_mean_f1_macro": perm.importances_mean.astype(float),
-    "perm_importance_std_f1_macro": perm.importances_std.astype(float),
-}).sort_values("perm_importance_mean_f1_macro", ascending=False)
-
-perm_csv = os.path.join(OUT_DIR, "all_features_logreg_permutation_importance_f1_macro.csv")
-perm_df.to_csv(perm_csv, index=False)
-
-# Optional: statsmodels p-values for coefficients (multinomial)
-# This gives inferential p-values but may be sensitive to collinearity; treat as exploratory.
-try:
-    import statsmodels.api as sm  # noqa: F401
-
-    Xz = scaler.transform(X)  # standardized
-    Xz = sm.add_constant(Xz, prepend=True, has_constant="add")
-    mn = sm.MNLogit(y, Xz)
-    res = mn.fit(method="newton", maxiter=200, disp=False)
-
-    # params/pvalues have shape: (n_params, n_classes-1) in MNLogit baseline coding.
-    params = res.params
-    pvals = res.pvalues
-
-    # Map to feature names (+ constant)
-    feat_plus = ["const"] + feature_cols
-
-    # Build a tidy table
-    rows = []
-    for col_idx in range(params.shape[1]):  # classes vs baseline
-        cls = f"vs_baseline_{col_idx}"
-        for r_idx, fname in enumerate(feat_plus):
-            rows.append({
-                "comparison": cls,
+    coef_long_rows = []
+    for ci, cname in enumerate(class_names):
+        for fi, fname in enumerate(feature_cols):
+            coef_long_rows.append({
+                "class": cname,
                 "feature": fname,
-                "coef": float(params.iloc[r_idx, col_idx]),
-                "p_value": float(pvals.iloc[r_idx, col_idx]),
+                "coef": float(coef[ci, fi]),
+                "abs_coef": float(abs(coef[ci, fi])),
             })
-    sm_df = pd.DataFrame(rows).sort_values(["comparison", "p_value"], ascending=[True, True])
+    coef_long_df = pd.DataFrame(coef_long_rows).sort_values(["class", "abs_coef"], ascending=[True, False])
 
-    sm_csv = os.path.join(OUT_DIR, "all_features_logreg_statsmodels_pvalues.csv")
-    sm_df.to_csv(sm_csv, index=False)
-except Exception:
-    # Do not fail the pipeline if statsmodels isn't available or MNLogit fails.
-    pass
+    coef_importance_csv = os.path.join(OUT_DIR, "all_features_logreg_coef_importance.csv")
+    coef_long_csv = os.path.join(OUT_DIR, "all_features_logreg_coef_by_class.csv")
+    coef_importance_df.to_csv(coef_importance_csv, index=False)
+    coef_long_df.to_csv(coef_long_csv, index=False)
+
+if RUN_PERMUTATION_IMPORTANCE:
+    perm = permutation_importance(
+        lr_pipe,
+        X,
+        y,
+        n_repeats=25,
+        random_state=RANDOM_STATE,
+        scoring="f1_macro",
+    )
+    perm_df = pd.DataFrame({
+        "feature": feature_cols,
+        "perm_importance_mean_f1_macro": perm.importances_mean.astype(float),
+        "perm_importance_std_f1_macro": perm.importances_std.astype(float),
+    }).sort_values("perm_importance_mean_f1_macro", ascending=False)
+
+    perm_csv = os.path.join(OUT_DIR, "all_features_logreg_permutation_importance_f1_macro.csv")
+    perm_df.to_csv(perm_csv, index=False)
+
+# %% Optional: statsmodels p-values (stabilized) — may skip if unstable
+if RUN_STATSMODELS_PVALUES:
+    try:
+        import statsmodels.api as sm
+        from statsmodels.stats.outliers_influence import variance_inflation_factor
+        from sklearn.preprocessing import RobustScaler
+
+        def _compute_vif_df(X_: pd.DataFrame) -> pd.DataFrame:
+            Xv = X_.values.astype(float)
+            rows = []
+            for i, c in enumerate(X_.columns):
+                rows.append({"feature": c, "vif": float(variance_inflation_factor(Xv, i))})
+            return pd.DataFrame(rows).sort_values("vif", ascending=False)
+
+        def _prune_high_vif(X_: pd.DataFrame, vif_thresh: float = 50.0, max_drop: int = 50) -> pd.DataFrame:
+            Xp = X_.copy()
+            dropped = 0
+            while True:
+                if Xp.shape[1] <= 2:
+                    break
+                vif_df = _compute_vif_df(Xp)
+                worst = vif_df.iloc[0]
+                if worst["vif"] <= vif_thresh:
+                    break
+                Xp = Xp.drop(columns=[worst["feature"]])
+                dropped += 1
+                if dropped >= max_drop:
+                    break
+            return Xp
+
+        # Build statsmodels-only design matrix (does not change sklearn outputs)
+        Xdf = df[feature_cols].copy()
+
+        # Stabilize: constant/corr/VIF pruning
+        Xdf = drop_near_constant(Xdf, eps=1e-12)
+        Xdf = drop_highly_correlated(Xdf, thresh=0.98)
+        Xdf = _prune_high_vif(Xdf, vif_thresh=50.0, max_drop=50)
+
+        sm_feature_cols = list(Xdf.columns)
+
+        # Robust scaling + clipping to prevent exp overflow
+        Xz = RobustScaler(quantile_range=(25.0, 75.0)).fit_transform(Xdf.values.astype(float))
+        Xz = np.clip(Xz, -10.0, 10.0)
+        Xz = sm.add_constant(Xz, prepend=True, has_constant="add")
+
+        mn = sm.MNLogit(y, Xz)
+
+        # Silence runtime warnings during fit; validate outputs explicitly
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            res = mn.fit(method="bfgs", maxiter=800, disp=False)
+
+        params = res.params
+        pvals = res.pvalues
+
+        if not np.isfinite(params.to_numpy()).all() or not np.isfinite(pvals.to_numpy()).all():
+            raise RuntimeError("MNLogit produced non-finite params/p-values (unstable fit).")
+
+        feat_plus = ["const"] + sm_feature_cols
+
+        rows = []
+        for col_idx in range(params.shape[1]):  # classes vs baseline
+            cls = f"vs_baseline_{col_idx}"
+            for r_idx, fname in enumerate(feat_plus):
+                rows.append({
+                    "comparison": cls,
+                    "feature": fname,
+                    "coef": float(params.iloc[r_idx, col_idx]),
+                    "p_value": float(pvals.iloc[r_idx, col_idx]),
+                })
+
+        sm_df = pd.DataFrame(rows).sort_values(["comparison", "p_value"], ascending=[True, True])
+        sm_csv = os.path.join(OUT_DIR, "all_features_logreg_statsmodels_pvalues.csv")
+        sm_df.to_csv(sm_csv, index=False)
+        print(f"[All features] statsmodels p-values saved: {sm_csv}")
+
+    except Exception as e:
+        print(f"[All features] statsmodels p-values skipped: {e}")
 
 # %% Minimal console summary
 print(f"[All features] Saved outputs to: {OUT_DIR}")
@@ -574,7 +638,10 @@ print(" - Confusion matrix (% PNG):    all_features_logreg_cv_confusion_matrix_p
 print(" - CV macro metrics:            all_features_logreg_cv_macro_metrics.csv")
 print(" - CV per-class metrics:        all_features_logreg_cv_per_class_metrics.csv")
 print(" - OOF predictions (per-row):   all_features_logreg_oof_predictions.csv")
-print(" - Coef importance:             all_features_logreg_coef_importance.csv")
-print(" - Coefs by class:              all_features_logreg_coef_by_class.csv")
-print(" - Permutation importance:      all_features_logreg_permutation_importance_f1_macro.csv")
-print(" - Statsmodels p-values:        all_features_logreg_statsmodels_pvalues.csv (if available)")
+if RUN_COEF_IMPORTANCE:
+    print(" - Coef importance:             all_features_logreg_coef_importance.csv")
+    print(" - Coefs by class:              all_features_logreg_coef_by_class.csv")
+if RUN_PERMUTATION_IMPORTANCE:
+    print(" - Permutation importance:      all_features_logreg_permutation_importance_f1_macro.csv")
+if RUN_STATSMODELS_PVALUES:
+    print(" - Statsmodels p-values:        all_features_logreg_statsmodels_pvalues.csv (if stable; otherwise skipped)")

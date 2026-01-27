@@ -21,3 +21,5 @@ svm_min_lin_report.csv
 /tbme_code/1_alignment_metric/exp_step1_svm_rbf_3class
 /tbme_code/1_alignment_metric/exp_step1_logreg_3class
 tree.txt
+/tbme_code/5_feature_fusion/exp_step5_all_features_logreg_3class
+/tbme_code/5_feature_fusion/exp_step5_all_features_svm_3class
